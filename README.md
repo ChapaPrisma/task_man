@@ -1,5 +1,8 @@
 # Prisma — Painel de tarefas
 
+> **Painel:** <https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec>  
+> Abre só logado em **chapa.poli.prisma@gmail.com** (de preferência numa janela anônima ou perfil do Chrome só com essa conta).
+
 Painel de tarefas da **Chapa Prisma (Grêmio Politécnico)**. Tudo gira em torno de **chapa.poli.prisma@gmail.com**:
 
 - você cadastra **nome e e-mail** de todos os envolvidos;

@@ -311,6 +311,7 @@ label.l{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em
  * Constantes (manter iguais às do Code.gs)
  * ===================================================================== */
 var HUB = 'chapa.poli.prisma@gmail.com';
+var PANEL_URL = 'https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec';
 var PRIOS = {
   urgente: { label: 'Urgente', c: '#E8906A', soft: '#F8E1D6', rank: 0, hint: 'hoje ou amanhã' },
   alta:    { label: 'Alta',    c: '#E0B44E', soft: '#F6EBCB', rank: 1, hint: 'esta semana' },
@@ -494,7 +495,7 @@ function render() {
   var verif = S.data.tarefas.filter(function (t) { return t.status === 'verificar'; }).length;
 
   var banners = '';
-  if (m.demo) banners += '<div class="banner demo"><b>Modo demonstração.</b> Os dados ficam só neste navegador e os e-mails são simulados. Implante no Apps Script da conta ' + HUB + ' para usar de verdade (veja o README).<button class="btn btn-ghost btn-sm" data-act="demo-reset" style="margin-left:auto">Restaurar exemplo</button></div>';
+  if (m.demo) banners += '<div class="banner demo"><b>Modo demonstração.</b> Os dados ficam só neste navegador e os e-mails são simulados. <a href="' + PANEL_URL + '" target="_blank" rel="noopener"><b>Abrir o painel real ↗</b></a> (só abre logado em ' + HUB + ').<button class="btn btn-ghost btn-sm" data-act="demo-reset" style="margin-left:auto">Restaurar exemplo</button></div>';
   if (!m.demo && m.contaAtual && m.contaAtual.toLowerCase() !== HUB) banners += '<div class="banner warn"><b>Atenção:</b> o painel está rodando como ' + esc(m.contaAtual) + '. Para que tudo passe por ' + HUB + ', implante o projeto a partir dessa conta.</div>';
   if (!m.demo && !m.gatilhoAtivo) banners += '<div class="banner warn"><b>Varredura automática desligada.</b> Rode a função <span class="mono">setup</span> uma vez no editor do Apps Script — até lá, use “Verificar caixa”.</div>';
 
