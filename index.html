@@ -276,6 +276,11 @@ label.l{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em
 .loading{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--navy);color:#F4F2EC}
 .loading svg{animation:pulse 1.4s ease-in-out infinite}
 .loading .word{font-weight:800;font-variation-settings:'wdth' 112;letter-spacing:.04em;font-size:30px}
+.login-box{width:min(340px,calc(100vw - 48px));display:grid;gap:10px;margin:10px 0 8px}
+.login-box .field{background:#262F52;border-color:#3A4160;color:#F4F2EC;font-size:16px;padding:12px}
+.login-box .field:focus{border-color:#E8906A;background:#262F52}
+.login-box .btn{padding:13px}
+.login-msg{min-height:1.4em;margin:0;color:#F2B8A2;font-size:13px;text-align:center}
 .spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rot .7s linear infinite;display:inline-block}
 
 @keyframes fade{from{opacity:0}}
@@ -354,14 +359,29 @@ var dragId = null;
 /* =====================================================================
  * API — Apps Script ou demonstração local
  * ===================================================================== */
+var TOKEN_KEY = 'prisma-painel-token';
+var TOKEN = null;
+try { TOKEN = localStorage.getItem(TOKEN_KEY); } catch (e) { /* armazenamento bloqueado */ }
+function setToken(t) {
+  TOKEN = t;
+  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+}
+
 function api(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
   return new Promise(function (resolve, reject) {
     if (IS_GAS) {
       var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) {
-        reject(new Error(e && e.message ? e.message : String(e)));
+        var msg = e && e.message ? e.message : String(e);
+        if (/^AUTH:/.test(msg) || /AUTH: /.test(msg)) {
+          setToken(null); S.data = null; M = null;
+          renderLogin('Sua sessão expirou. Entre de novo.');
+          return reject(new Error('Entre com a senha do painel.'));
+        }
+        reject(new Error(msg.replace(/^Exception:\s*/, '')));
       });
-      r[fn].apply(r, args);
+      if (fn === 'apiLogin') r[fn].apply(r, args);
+      else r[fn].apply(r, [TOKEN].concat(args));
     } else {
       setTimeout(function () {
         try { resolve(Demo[fn].apply(null, args)); } catch (e) { reject(e); }
@@ -517,6 +537,7 @@ function render() {
         (m.pastaUrl ? '<a href="' + esc(m.pastaUrl) + '" target="_blank" rel="noopener">Pasta de entregas ↗</a>' : '') +
         (m.planilhaUrl ? '<a href="' + esc(m.planilhaUrl) + '" target="_blank" rel="noopener">Planilha ↗</a>' : '') +
         (m.cotaEmail != null ? '<span class="muted" title="Limite diário de e-mails da conta Gmail">' + m.cotaEmail + ' e-mails restantes hoje</span>' : '') +
+        (!m.demo ? '<button class="mono small muted" data-act="logout" style="text-decoration:underline">Sair</button>' : '') +
       '</div>' +
     '</nav>' +
     '<main class="main" id="main"></main>';
@@ -1061,6 +1082,7 @@ document.addEventListener('click', function (e) {
       renderMain(); break;
     case 'send-msg': sendMessage(); break;
     case 'demo-reset': Demo.reset(); load(); break;
+    case 'logout': setToken(null); S.data = null; S.open = null; $('#drawer-root').innerHTML = ''; renderLogin(); break;
   }
 });
 
@@ -1151,9 +1173,37 @@ function sendMessage() {
 /* =====================================================================
  * Carregamento e atualização periódica
  * ===================================================================== */
+function renderLogin(msg) {
+  $('#drawer-root').innerHTML = ''; $('#modal-root').innerHTML = '';
+  $('#app').innerHTML = '<div class="loading login">' + mark(84, '#F4F2EC') +
+    '<div class="word">PRISMA</div><div class="mono small" style="letter-spacing:.14em;text-transform:uppercase;color:#AEB3C7;margin-top:-8px">Painel de tarefas</div>' +
+    '<form id="login-form" class="login-box" autocomplete="on">' +
+      '<label class="l" for="login-pass" style="color:#AEB3C7">Senha do painel</label>' +
+      '<input id="login-pass" type="password" class="field w" autocomplete="current-password" required autofocus>' +
+      '<button class="btn btn-primary" type="submit" style="width:100%">Entrar</button>' +
+      '<p class="login-msg" id="login-msg">' + esc(msg || '') + '</p>' +
+    '</form>' +
+    '<div class="mono small" style="color:#8A8FA6">' + HUB + '</div></div>';
+  setTimeout(function () { var i = $('#login-pass'); if (i) i.focus(); }, 30);
+}
+
+document.addEventListener('submit', function (e) {
+  if (e.target.id !== 'login-form') return;
+  e.preventDefault();
+  var btn = e.target.querySelector('button'), msg = $('#login-msg');
+  btn.disabled = true; btn.textContent = 'Entrando…'; msg.textContent = '';
+  api('apiLogin', $('#login-pass').value).then(function (r) {
+    setToken(r.token); load();
+  }).catch(function (err) {
+    btn.disabled = false; btn.textContent = 'Entrar'; msg.textContent = err.message;
+  });
+});
+
 function load() {
+  if (IS_GAS && !TOKEN) { renderLogin(); return Promise.resolve(); }
   return api('apiBootstrap').then(function (d) { S.data = d; render(); })
     .catch(function (e) {
+      if (!TOKEN && IS_GAS) return; // tela de login já exibida
       $('#app').innerHTML = '<div class="loading"><div class="word">PRISMA</div><p style="max-width:420px;text-align:center;line-height:1.5">Não foi possível carregar o painel.<br><span class="mono small">' + esc(e.message) + '</span></p></div>';
     });
 }

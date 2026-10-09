@@ -1,7 +1,7 @@
 # Prisma — Painel de tarefas
 
 > **Painel:** <https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec>  
-> Abre só logado em **chapa.poli.prisma@gmail.com** (de preferência numa janela anônima ou perfil do Chrome só com essa conta).
+> Abre em qualquer navegador ou celular e pede a **senha do painel** (combinada pela chapa).
 
 Painel de tarefas da **Chapa Prisma (Grêmio Politécnico)**. Tudo gira em torno de **chapa.poli.prisma@gmail.com**:
 
@@ -59,12 +59,14 @@ Cada e-mail de tarefa sai com o assunto `[PRISMA T-012] Título`. A varredura pr
    - abra `Código.gs`, apague tudo e cole o conteúdo de [`Code.gs`](Code.gs);
    - abra `appsscript.json` e cole o conteúdo de [`appsscript.json`](appsscript.json);
    - clique em **+ → HTML**, nomeie **`index`** (sem `.html`) e cole o conteúdo de [`index.html`](index.html).
-4. Salve. No topo, escolha a função **`setup`** e clique em **▶ Executar**.
+4. Defina a **senha do painel**: ⚙️ **Configurações do projeto → Propriedades do script → Adicionar propriedade do script**, nome `PANEL_PASSWORD`, valor = a senha que a chapa vai usar.
+5. Salve. No topo, escolha a função **`setup`** e clique em **▶ Executar**.
    - Autorize o acesso. Como o app é seu, o Google mostra *“app não verificado”* → **Avançado → Acessar Prisma — Tarefas (não seguro)** → **Permitir**.
    - O `setup` cria a planilha, a pasta de entregas e o gatilho de varredura a cada 5 minutos.
-5. **Implantar → Nova implantação** → tipo **App da Web**:
+6. Rode também **`testarEmail`**: manda um e-mail de teste e mostra no registro a cota ou o erro exato do Google.
+7. **Implantar → Nova implantação** → tipo **App da Web**:
    - *Executar como*: **Eu (chapa.poli.prisma@gmail.com)**
-   - *Quem pode acessar*: **Somente eu**
+   - *Quem pode acessar*: **Qualquer pessoa**
    - **Implantar** e copie a URL. Esse é o painel. Salve nos favoritos.
 
 ### Opção B — com o `clasp` (linha de comando)
@@ -74,7 +76,7 @@ npm install -g @google/clasp
 clasp login                 # entre com chapa.poli.prisma@gmail.com
 clasp create --type standalone --title "Prisma — Tarefas" --rootDir .
 clasp push
-clasp open                  # rode `setup` no editor e depois implante como App da Web (passos 4 e 5 acima)
+clasp open                  # rode `setup` no editor e depois implante como App da Web (passos 4 a 7 acima)
 ```
 
 ### Atualizar depois de mudar o código
@@ -85,7 +87,12 @@ Cole/`clasp push` os arquivos e em **Implantar → Gerenciar implantações → 
 
 ## Quem pode usar o painel
 
-O painel fica com acesso **“Somente eu”**, ou seja, só abre logado na conta da chapa. Quem coordena as tarefas entra com essa conta (um perfil separado no Chrome facilita). Os demais membros **não precisam abrir o painel**: eles recebem tudo por e-mail e respondem por e-mail.
+O app da Web fica aberto a **“Qualquer pessoa”**, para funcionar em qualquer navegador (o Google não deixa escolher a conta quando há várias logadas), mas **toda ação exige a senha do painel** guardada em `PANEL_PASSWORD`. Tudo continua rodando como chapa.poli.prisma@gmail.com.
+
+- Quem coordena as tarefas usa a senha; o navegador lembra dela até clicar em **Sair**.
+- Para trocar a senha, altere `PANEL_PASSWORD` nas propriedades do script. Todo mundo é desconectado.
+- Após 10 tentativas erradas, o login fica bloqueado por 10 minutos.
+- Os demais membros **não precisam abrir o painel**: recebem tudo por e-mail e respondem por e-mail.
 
 ## Limites do Gmail gratuito
 

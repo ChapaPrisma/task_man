@@ -82,6 +82,9 @@ function setup() {
   Logger.log('Planilha de dados: ' + ss.getUrl());
   Logger.log('Pasta de entregas: ' + folder.getUrl());
   Logger.log('Varredura da caixa de entrada a cada ' + CONFIG.SCAN_EVERY_MINUTES + ' minutos: ativada.');
+  if (!PropertiesService.getScriptProperties().getProperty('PANEL_PASSWORD')) {
+    Logger.log('FALTA A SENHA: em Configurações do projeto › Propriedades do script, adicione PANEL_PASSWORD.');
+  }
   if (me.toLowerCase() !== CONFIG.HUB_EMAIL) {
     Logger.log('ATENÇÃO: este projeto está rodando como ' + me + ', não como ' + CONFIG.HUB_EMAIL +
       '. Os e-mails sairão desta conta e as entregas só serão lidas nesta caixa de entrada.');
@@ -105,15 +108,60 @@ function testarEmail() {
 }
 
 /* =========================================================================
+ * Acesso ao painel por senha
+ *
+ * O app da Web fica aberto a "Qualquer pessoa" (assim abre em qualquer
+ * navegador/conta), mas toda chamada exige a senha do painel.
+ * Defina a senha em: Configurações do projeto › Propriedades do script ›
+ * PANEL_PASSWORD. Trocar a senha desconecta todo mundo.
+ * ========================================================================= */
+
+function apiLogin(senha) {
+  const pass = PropertiesService.getScriptProperties().getProperty('PANEL_PASSWORD');
+  if (!pass) {
+    throw new Error('A senha do painel ainda não foi definida. No editor do Apps Script: ' +
+      'Configurações do projeto › Propriedades do script › adicione PANEL_PASSWORD.');
+  }
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('LOGIN_FAILS') || 0);
+  if (fails >= 10) throw new Error('Muitas tentativas erradas. Aguarde 10 minutos.');
+  if (String(senha || '') !== pass) {
+    cache.put('LOGIN_FAILS', String(fails + 1), 600);
+    Utilities.sleep(700);
+    throw new Error('Senha incorreta.');
+  }
+  return { token: authToken_(pass) };
+}
+
+function authToken_(pass) {
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty('TOKEN_SECRET');
+  if (!secret) {
+    secret = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('TOKEN_SECRET', secret);
+  }
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(pass, secret));
+}
+
+function requireAuth_(token) {
+  const pass = PropertiesService.getScriptProperties().getProperty('PANEL_PASSWORD');
+  if (!pass || !token || token !== authToken_(pass)) {
+    throw new Error('AUTH: sessão expirada — entre com a senha do painel.');
+  }
+}
+
+/* =========================================================================
  * API chamada pelo painel (google.script.run)
  * ========================================================================= */
 
-function apiBootstrap() {
+function apiBootstrap(token) {
+  requireAuth_(token);
   return bootstrap_();
 }
 
 /** Adiciona (sem id) ou atualiza (com id) pessoas. Aceita lista para importação em massa. */
-function apiSavePeople(list) {
+function apiSavePeople(token, list) {
+  requireAuth_(token);
   return withLock_(() => {
     const people = readTable_('pessoas');
     const r = { adicionadas: 0, atualizadas: 0, ignoradas: 0 };
@@ -143,7 +191,8 @@ function apiSavePeople(list) {
   });
 }
 
-function apiDeletePerson(id) {
+function apiDeletePerson(token, id) {
+  requireAuth_(token);
   return withLock_(() => {
     const people = readTable_('pessoas');
     const p = people.find(x => x.id === id);
@@ -161,7 +210,8 @@ function apiDeletePerson(id) {
 }
 
 /** Cria ou edita uma tarefa. enviar=true manda e-mail aos (novos) responsáveis. */
-function apiSaveTask(input, enviar) {
+function apiSaveTask(token, input, enviar) {
+  requireAuth_(token);
   return withLock_(() => {
     const tasks = readTable_('tarefas');
     const people = readTable_('pessoas');
@@ -210,7 +260,8 @@ function apiSaveTask(input, enviar) {
   });
 }
 
-function apiDeleteTask(id) {
+function apiDeleteTask(token, id) {
+  requireAuth_(token);
   return withLock_(() => {
     const tasks = readTable_('tarefas');
     const t = tasks.find(x => x.id === id);
@@ -226,7 +277,8 @@ function apiDeleteTask(id) {
  * - verificar → em_andamento com nota = "devolver com ajustes" (avisa por e-mail)
  * - → concluida com notificar = agradece por e-mail
  */
-function apiSetStatus(id, status, opts) {
+function apiSetStatus(token, id, status, opts) {
+  requireAuth_(token);
   opts = opts || {};
   return withLock_(() => {
     if (!STATUS_LABELS[status]) throw new Error('Status inválido.');
@@ -264,7 +316,8 @@ function apiSetStatus(id, status, opts) {
 }
 
 /** Reenvia a tarefa como lembrete (para quem ainda não entregou). */
-function apiResend(id) {
+function apiResend(token, id) {
+  requireAuth_(token);
   return withLock_(() => {
     const tasks = readTable_('tarefas');
     const people = readTable_('pessoas');
@@ -281,7 +334,8 @@ function apiResend(id) {
 }
 
 /** Mensagem avulsa para uma ou mais pessoas. msg = { para: [ids], assunto, corpo } */
-function apiSendMessage(msg) {
+function apiSendMessage(token, msg) {
+  requireAuth_(token);
   return withLock_(() => {
     const people = readTable_('pessoas');
     const para = unique_((msg.para || []).filter(id => people.some(p => p.id === id)));
@@ -312,7 +366,8 @@ function apiSendMessage(msg) {
 }
 
 /** Botão "Verificar caixa" do painel. */
-function apiScanNow() {
+function apiScanNow(token) {
+  requireAuth_(token);
   return withLock_(() => {
     const r = scanInbox_();
     const partes = [];
