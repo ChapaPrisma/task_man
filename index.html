@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prisma — Tarefas</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 140"%3E%3Cpolygon points="50,30 10,130 90,130" fill="%231B2340"/%3E%3Cpolygon points="50,30 73.3,23.3 113.3,123.3 90,130" fill="%23B8603E"/%3E%3Cpolygon points="73.3,23.3 96.7,16.7 136.7,116.7 113.3,123.3" fill="%23AE8325"/%3E%3Cpolygon points="96.7,16.7 120,10 160,110 136.7,116.7" fill="%232D7DA8"/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -282,6 +283,29 @@ label.l{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em
 .login-box .field:focus{border-color:#E8906A;background:#262F52}
 .login-box .btn{padding:13px}
 .login-msg{min-height:1.4em;margin:0;color:#F2B8A2;font-size:13px;text-align:center}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg button{border:2px solid var(--line);background:var(--white);padding:10px 14px;text-align:left;display:flex;flex-direction:column;gap:2px;border-radius:2px}
+.seg button b{font-weight:700;font-size:15px}
+.seg button small{font-size:12px;color:var(--ink-3)}
+.seg button.on{border-color:var(--navy);background:var(--navy);color:#F4F2EC}
+.seg button.on small{color:#AEB3C7}
+.ft.poll{background:var(--navy);color:#F4F2EC;border-color:var(--navy)}
+.yn{font-family:var(--mono);font-size:10.5px;padding:2px 6px;white-space:nowrap}
+.yn.y{background:#DDF0E4;color:#1E6B42}
+.yn.n{background:var(--coral-soft);color:#8E3A22}
+.yn.p{background:var(--line-2);color:var(--ink-3)}
+.tag.yes{background:#DDF0E4;color:#1E6B42;font-weight:500}
+.tag.no{background:var(--coral-soft);color:#8E3A22;font-weight:500}
+.tally{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tally div{background:var(--white);border:1px solid var(--line);padding:10px 12px;border-top:4px solid var(--c)}
+.tally .y{--c:#2E8B57}.tally .n{--c:#E8906A}.tally .p{--c:#B9BDCB}
+.tally b{display:block;font-size:28px;font-weight:800;font-variation-settings:'wdth' 112;line-height:1}
+.tally span{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.pollbar{display:flex;height:8px;background:var(--line-2);margin-top:10px}
+.pollbar i{display:block;height:100%}
+.pollbar .y{background:#2E8B57}.pollbar .n{background:#E8906A}
+.yn-btns{display:inline-flex;gap:4px}
+.yn-btns .btn{padding:5px 8px;font-size:12px}
 .spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rot .7s linear infinite;display:inline-block}
 
 @keyframes fade{from{opacity:0}}
@@ -456,6 +480,20 @@ function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
 function avColor(id) { var h = 0; String(id).split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return AV_COLORS[h % AV_COLORS.length]; }
 function person(id) { return S.data.pessoas.find(function (p) { return p.id === id; }); }
 function isAdmin(p) { return !!p && (p.admin === true || p.admin === 'sim'); }
+function isPoll(t) { return t && t.tipo === 'consulta'; }
+function pollCounts(t) {
+  var map = {};
+  (t.respostas || []).forEach(function (a) { map[a.pessoaId || a.de] = a; });
+  var sim = 0, nao = 0;
+  Object.keys(map).forEach(function (k) { if (map[k].resposta === 'sim') sim++; else if (map[k].resposta === 'nao') nao++; });
+  var pend = t.responsaveis.filter(function (id) { return !map[id]; }).length;
+  return { sim: sim, nao: nao, pend: pend, map: map };
+}
+function pollChips(t) {
+  var c = pollCounts(t);
+  return '<span class="ft poll">consulta</span><span class="yn y">' + c.sim + ' sim</span><span class="yn n">' + c.nao + ' não</span>' +
+    (c.pend ? '<span class="yn p">' + c.pend + ' sem resposta</span>' : '');
+}
 function task(id) { return S.data.tarefas.find(function (t) { return t.id === id; }); }
 function prio(t) { return PRIOS[t.prioridade] || PRIOS.media; }
 function allowedExts(t) {
@@ -679,6 +717,10 @@ function avatarsHtml(t, max) {
 function whoText(t) {
   var names = function (ids) { return ids.map(function (id) { var p = person(id); return p ? firstName(p.nome) : null; }).filter(Boolean); };
   if (!t.responsaveis.length) return '<span class="muted">sem responsável</span>';
+  if (isPoll(t)) {
+    var pc = pollCounts(t), tot = t.responsaveis.length;
+    return t.status === 'concluida' ? 'consulta encerrada' : '<b>' + (tot - pc.pend) + '/' + tot + '</b> responderam';
+  }
   if (t.status === 'em_andamento') {
     var w = names(t.confirmados);
     if (w.length) return '<b>' + esc(w.slice(0, 2).join(', ')) + '</b>' + (w.length > 2 ? ' +' + (w.length - 2) : '') + ' trabalhando';
@@ -715,9 +757,9 @@ function cardHtml(t) {
   var p = prio(t);
   return '<article class="card ' + (t.status === 'concluida' ? 'done' : '') + '" style="--c:' + p.c + '" draggable="true" tabindex="0" role="button" aria-label="' + esc(t.codigo + ' ' + t.titulo) + '" data-id="' + t.id + '" data-act="open">' +
     '<div class="row1"><span class="code">' + t.codigo + '</span><span class="badge">' + p.label + '</span>' +
-      (t.entregas.length ? '<span class="subs" title="Entregas recebidas por e-mail">' + t.entregas.length + ' entrega' + (t.entregas.length > 1 ? 's' : '') + '</span>' : '') + '</div>' +
+      (!isPoll(t) && t.entregas.length ? '<span class="subs" title="Entregas recebidas por e-mail">' + t.entregas.length + ' entrega' + (t.entregas.length > 1 ? 's' : '') + '</span>' : '') + '</div>' +
     '<h4>' + esc(t.titulo) + '</h4>' +
-    '<div class="meta">' + dueHtml(t) + fileChips(t) + '</div>' +
+    '<div class="meta">' + dueHtml(t) + (isPoll(t) ? pollChips(t) : fileChips(t)) + '</div>' +
     '<div class="foot"><div class="avs">' + avatarsHtml(t) + '</div><span class="who">' + whoText(t) + '</span></div>' +
   '</article>';
 }
@@ -750,7 +792,7 @@ function viewList() {
         '<td><span class="st st-' + t.status + '">' + STATUS_LABEL[t.status] + '</span></td>' +
         '<td class="names">' + names + '</td>' +
         '<td>' + (dueHtml(t) || '<span class="muted">—</span>') + '</td>' +
-        '<td><div class="meta">' + fileChips(t) + '</div></td>' +
+        '<td><div class="meta">' + (isPoll(t) ? pollChips(t) : fileChips(t)) + '</div></td>' +
         '<td class="code">' + ago(t.atualizadoEm) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -870,6 +912,7 @@ function renderDrawer() {
   var t = S.open ? task(S.open) : null;
   if (!t) { root.innerHTML = ''; S.open = null; return; }
   var p = prio(t);
+  if (isPoll(t)) { root.innerHTML = pollDrawerHtml(t, p); return; }
   var expects = allowedExts(t).length > 0;
   var tag = '[PRISMA ' + t.codigo + ']';
   var delivered = {};
@@ -948,6 +991,56 @@ function renderDrawer() {
     '</aside>';
 }
 
+function pollDrawerHtml(t, p) {
+  var c = pollCounts(t), tot = t.responsaveis.length || 1, open = t.status !== 'concluida';
+  var tag = '[PRISMA ' + t.codigo + ']';
+  var actions = '';
+  if (open) {
+    if (c.pend) actions += '<button class="btn btn-ghost" data-act="resend">Lembrar quem não respondeu</button>';
+    actions += '<button class="btn btn-ok" data-act="set-status" data-k="concluida">Encerrar consulta</button>';
+  } else {
+    actions += '<button class="btn btn-ghost" data-act="set-status" data-k="em_andamento">Reabrir consulta</button>';
+  }
+  actions += '<button class="btn btn-ghost" data-act="edit-task">Editar</button>' +
+    '<button class="btn btn-danger" data-act="del-task" style="margin-left:auto">Excluir</button>';
+
+  var rows = t.responsaveis.map(function (id) {
+    var pp = person(id); if (!pp) return '';
+    var a = c.map[id];
+    var tagHtml = a ? '<span class="tag ' + (a.resposta === 'sim' ? 'yes' : 'no') + '" title="' + fmtWhen(a.quando) + '">' + (a.resposta === 'sim' ? 'SIM' : 'NÃO') + '</span>'
+      : '<span class="tag wait">sem resposta</span>';
+    var manual = open ? '<span class="yn-btns"><button class="btn btn-ghost btn-sm" data-act="poll-answer" data-id="' + id + '" data-k="sim" title="Registrar SIM (resposta dada por outro canal)">Sim</button>' +
+      '<button class="btn btn-ghost btn-sm" data-act="poll-answer" data-id="' + id + '" data-k="nao" title="Registrar NÃO (resposta dada por outro canal)">Não</button></span>' : '';
+    return '<div class="person-row"><span class="av md" style="--c:' + avColor(id) + '">' + initials(pp.nome) + '</span><div class="nm"><b>' + esc(pp.nome) + '</b>' +
+      (isAdmin(pp) ? ' <span class="adm">adm</span>' : '') + '<div>' + (a ? 'respondeu ' + fmtWhen(a.quando) : esc(pp.email)) + '</div></div>' + manual + tagHtml + '</div>';
+  }).join('') || '<div class="muted">Ninguém foi consultado. <button class="lnk" data-act="edit-task" style="text-decoration:underline">Adicionar pessoas</button></div>';
+
+  var extras = (t.respostas || []).filter(function (a) { return !a.pessoaId || t.responsaveis.indexOf(a.pessoaId) < 0; });
+  var extraHtml = extras.length ? '<div class="sec"><h5>Respostas de fora da lista</h5>' + extras.map(function (a) {
+    return '<div class="person-row"><div class="nm"><b>' + esc(a.nome || a.de) + '</b><div>' + esc(a.de || '') + '</div></div><span class="tag ' + (a.resposta === 'sim' ? 'yes' : 'no') + '">' + (a.resposta === 'sim' ? 'SIM' : 'NÃO') + '</span></div>';
+  }).join('') + '</div>' : '';
+
+  var evs = S.data.eventos.filter(function (e) { return e.tarefaId === t.id; });
+  var hist = evs.length ? evs.map(function (e) { return '<div class="mini-ev"><span class="tm">' + fmtWhen(e.quando) + '</span><span>' + esc(e.texto) + '</span></div>'; }).join('') : '<div class="muted">—</div>';
+
+  return '<div class="scrim" data-act="close-drawer"></div>' +
+    '<aside class="drawer" role="dialog" aria-modal="true" aria-label="' + esc(t.titulo) + '">' +
+      '<div class="dh" style="--c:' + p.c + '"><button class="x" data-act="close-drawer" aria-label="Fechar">×</button>' +
+        '<div class="row1"><span class="code">' + t.codigo + '</span><span class="badge">' + p.label + '</span><span class="ft poll">consulta sim/não</span><span class="st st-' + t.status + '">' + (open ? 'Aberta' : 'Encerrada') + '</span></div>' +
+        '<h2>' + esc(t.titulo) + '</h2></div>' +
+      '<div class="dact">' + actions + '</div>' +
+      (t.descricao ? '<div class="sec"><h5>Contexto</h5><div class="desc">' + esc(t.descricao) + '</div></div>' : '') +
+      '<div class="sec"><h5><span>Resultado</span><span>' + (t.responsaveis.length - c.pend) + '/' + t.responsaveis.length + ' responderam</span></h5>' +
+        '<div class="tally"><div class="y"><b>' + c.sim + '</b><span>sim</span></div><div class="n"><b>' + c.nao + '</b><span>não</span></div><div class="p"><b>' + c.pend + '</b><span>sem resposta</span></div></div>' +
+        '<div class="pollbar" aria-hidden="true"><i class="y" style="width:' + (c.sim / tot * 100) + '%"></i><i class="n" style="width:' + (c.nao / tot * 100) + '%"></i></div>' +
+        (t.prazo ? '<div class="small muted" style="margin-top:10px">Responder até ' + dueHtml(t) + '</div>' : '') +
+        '<div class="howto">Cada pessoa recebeu a pergunta por e-mail e deve responder <b>só SIM ou NÃO</b> para ' + HUB + ', mantendo <b>' + esc(tag) + '</b> no assunto. Respostas fora desse formato recebem um pedido automático para responder só sim ou não. Se alguém mudar de ideia, vale a última resposta. Quando todos responderem, a consulta é encerrada sozinha. Os botões <b>Sim</b>/<b>Não</b> registram uma resposta dada por outro canal.</div>' +
+      '</div>' +
+      '<div class="sec"><h5>Quem respondeu</h5>' + rows + '</div>' + extraHtml +
+      '<div class="sec" style="border-bottom:0"><h5>Histórico</h5>' + hist + '</div>' +
+    '</aside>';
+}
+
 /* =====================================================================
  * Modal (criar / editar tarefa)
  * ===================================================================== */
@@ -955,10 +1048,10 @@ function openTaskModal(t, presetPerson) {
   M = t ? {
     id: t.id, codigo: t.codigo, titulo: t.titulo, descricao: t.descricao, prioridade: t.prioridade, prazo: t.prazo,
     responsaveis: t.responsaveis.slice(), tiposArquivo: t.tiposArquivo.slice(), extensoes: (t.extensoes || []).join(', '),
-    enviar: true, pq: ''
+    enviar: true, pq: '', tipo: isPoll(t) ? 'consulta' : 'tarefa'
   } : {
     id: null, titulo: '', descricao: '', prioridade: 'media', prazo: '', responsaveis: presetPerson ? [presetPerson] : [],
-    tiposArquivo: ['qualquer'], extensoes: '', enviar: true, pq: ''
+    tiposArquivo: ['qualquer'], extensoes: '', enviar: true, pq: '', tipo: 'tarefa'
   };
   renderModal();
   setTimeout(function () { var i = $('#m-titulo'); if (i) i.focus(); }, 30);
@@ -988,19 +1081,26 @@ function renderModal() {
   if (!M) { root.innerHTML = ''; return; }
   var editing = !!M.id;
   var none = !M.tiposArquivo.length && !M.extensoes.trim();
+  var poll = M.tipo === 'consulta';
+  var allOn = S.data.pessoas.length && S.data.pessoas.every(function (pp) { return M.responsaveis.indexOf(pp.id) >= 0; });
   root.innerHTML = '<div class="modal" data-act="modal-bg"><div class="box" role="dialog" aria-modal="true" aria-labelledby="m-title">' +
-    '<div class="mh"><div><div class="kick">' + (editing ? M.codigo : 'Nova tarefa') + '</div><div class="mt" id="m-title">' + (editing ? 'Editar tarefa' : 'Criar e delegar') + '</div></div>' +
+    '<div class="mh"><div><div class="kick">' + (editing ? M.codigo : poll ? 'Nova consulta' : 'Nova tarefa') + '</div><div class="mt" id="m-title">' + (editing ? (poll ? 'Editar consulta' : 'Editar tarefa') : poll ? 'Perguntar sim ou não' : 'Criar e delegar') + '</div></div>' +
       '<div class="deco" aria-hidden="true">' + BANDS + '</div><button class="x" data-act="close-modal" aria-label="Fechar">×</button></div>' +
     '<div class="form">' +
-      '<div><label class="l" for="m-titulo">Título</label><input id="m-titulo" class="field w" data-m="titulo" value="' + esc(M.titulo) + '" placeholder="Ex.: Arte do post do debate"></div>' +
-      '<div><label class="l" for="m-desc">O que precisa ser feito</label><textarea id="m-desc" class="field w" rows="4" data-m="descricao" placeholder="Contexto, referências, links… vai no corpo do e-mail.">' + esc(M.descricao) + '</textarea></div>' +
+      '<div class="seg" role="group" aria-label="Tipo">' +
+        '<button type="button" class="' + (!poll ? 'on' : '') + '" data-act="m-tipo" data-k="tarefa"><b>Tarefa</b><small>alguém faz e entrega</small></button>' +
+        '<button type="button" class="' + (poll ? 'on' : '') + '" data-act="m-tipo" data-k="consulta"><b>Consulta</b><small>pergunta de sim ou não</small></button>' +
+      '</div>' +
+      '<div><label class="l" for="m-titulo">' + (poll ? 'Pergunta' : 'Título') + '</label><input id="m-titulo" class="field w" data-m="titulo" value="' + esc(M.titulo) + '" placeholder="' + (poll ? 'Ex.: Você consegue ir na reunião de sexta às 18h?' : 'Ex.: Arte do post do debate') + '"></div>' +
+      '<div><label class="l" for="m-desc">' + (poll ? 'Contexto (opcional)' : 'O que precisa ser feito') + '</label><textarea id="m-desc" class="field w" rows="' + (poll ? 3 : 4) + '" data-m="descricao" placeholder="' + (poll ? 'Detalhes que ajudam a responder. Vai no corpo do e-mail.' : 'Contexto, referências, links… vai no corpo do e-mail.') + '">' + esc(M.descricao) + '</textarea></div>' +
       '<div><label class="l">Prioridade</label><div class="prio-pick">' + PRIO_KEYS.map(function (k) {
         return '<button type="button" class="' + (M.prioridade === k ? 'on' : '') + '" style="--c:' + PRIOS[k].c + ';--cs:' + PRIOS[k].soft + '" data-act="m-prio" data-k="' + k + '"><b>' + PRIOS[k].label + '</b><small>' + PRIOS[k].hint + '</small></button>';
       }).join('') + '</div></div>' +
-      '<div class="grid2"><div><label class="l" for="m-prazo">Prazo</label><input id="m-prazo" type="date" class="field w" data-m="prazo" value="' + esc(M.prazo) + '"></div>' +
-        '<div><label class="l" for="m-pq">Responsáveis · <span id="m-count">' + M.responsaveis.length + '</span></label><input id="m-pq" class="field w" placeholder="Filtrar pessoas…" value="' + esc(M.pq) + '"></div></div>' +
+      '<div class="grid2"><div><label class="l" for="m-prazo">' + (poll ? 'Responder até' : 'Prazo') + '</label><input id="m-prazo" type="date" class="field w" data-m="prazo" value="' + esc(M.prazo) + '"></div>' +
+        '<div><label class="l" for="m-pq">' + (poll ? 'Quem responde' : 'Responsáveis') + ' · <span id="m-count">' + M.responsaveis.length + '</span> <button type="button" class="lnk" data-act="m-all" style="text-decoration:underline;letter-spacing:0;text-transform:none">' + (allOn ? 'limpar' : 'todos') + '</button></label><input id="m-pq" class="field w" placeholder="Filtrar pessoas…" value="' + esc(M.pq) + '"></div></div>' +
       '<div class="chips" id="m-people">' + modalPeopleHtml() + '</div>' +
-      '<div><label class="l">Tipo de arquivo esperado na resposta</label><div class="chips" id="m-kinds">' +
+      (poll ? '<p class="hint" style="margin:0">Cada pessoa recebe a pergunta por e-mail com a instrução de responder <b>só SIM ou NÃO</b> para ' + HUB + '. As respostas aparecem dentro da consulta, com quem disse sim e quem disse não.</p>' : '') +
+      '<div' + (poll ? ' hidden' : '') + '><label class="l">Tipo de arquivo esperado na resposta</label><div class="chips" id="m-kinds">' +
         Object.keys(FILE_KINDS).map(function (k) {
           return '<button type="button" class="chip ' + (M.tiposArquivo.indexOf(k) >= 0 ? 'on' : '') + '" data-act="m-kind" data-k="' + k + '">' + FILE_KINDS[k].label +
             (k !== 'qualquer' ? ' <small>' + FILE_KINDS[k].exts.slice(0, 3).map(function (e) { return '.' + e; }).join(' ') + '</small>' : '') + '</button>';
@@ -1010,8 +1110,8 @@ function renderModal() {
       '<input class="field w" style="margin-top:8px" data-m="extensoes" value="' + esc(M.extensoes) + '" placeholder="Outras extensões aceitas (opcional): psd, ai, fig, zip">' +
       '<p class="hint" id="m-hint">' + modalHint() + '</p></div>' +
     '</div>' +
-    '<div class="mf"><label class="check"><input type="checkbox" data-m="enviar"' + (M.enviar ? ' checked' : '') + '> ' + (editing ? 'Enviar e-mail aos responsáveis adicionados agora' : 'Enviar e-mail aos responsáveis agora') + '</label>' +
-      '<div class="acts"><button class="btn btn-ghost" data-act="close-modal">Cancelar</button><button class="btn btn-dark" data-act="save-task"' + (S.busy.task ? ' disabled' : '') + '>' + (S.busy.task ? 'Salvando…' : editing ? 'Salvar' : 'Criar tarefa') + '</button></div></div>' +
+    '<div class="mf"><label class="check"><input type="checkbox" data-m="enviar"' + (M.enviar ? ' checked' : '') + '> ' + (editing ? 'Enviar e-mail a quem foi adicionado agora' : poll ? 'Enviar a pergunta por e-mail agora' : 'Enviar e-mail aos responsáveis agora') + '</label>' +
+      '<div class="acts"><button class="btn btn-ghost" data-act="close-modal">Cancelar</button><button class="btn btn-dark" data-act="save-task"' + (S.busy.task ? ' disabled' : '') + '>' + (S.busy.task ? 'Salvando…' : editing ? 'Salvar' : poll ? 'Enviar consulta' : 'Criar tarefa') + '</button></div></div>' +
   '</div></div>';
 
   root.querySelectorAll('[data-m]').forEach(function (el) {
@@ -1078,6 +1178,13 @@ document.addEventListener('click', function (e) {
     case 'approve':
       var n = $('#notify-done'); S.notifyDone = n ? n.checked : true;
       act('status', function () { return api('apiSetStatus', S.open, 'concluida', { notificar: S.notifyDone }); }); break;
+    case 'm-tipo': M.tipo = k; renderModal(); setTimeout(function () { var i = $('#m-titulo'); if (i) i.focus(); }, 20); break;
+    case 'm-all':
+      var every = S.data.pessoas.every(function (pp) { return M.responsaveis.indexOf(pp.id) >= 0; });
+      M.responsaveis = every ? [] : S.data.pessoas.map(function (pp) { return pp.id; });
+      renderModal(); break;
+    case 'poll-answer':
+      act('status', function () { return api('apiAnswer', S.open, id, k); }); break;
     case 'admin-done':
       var nd = $('#notify-done'); if (nd) S.notifyDone = nd.checked;
       act('status', function () { return api('apiSetStatus', S.open, 'concluida', { notificar: !!(nd && nd.checked), peloPainel: true }); }); break;
@@ -1176,7 +1283,8 @@ function saveTask() {
   if (!M.titulo.trim()) { toast('Dê um título à tarefa.', 'err'); $('#m-titulo').focus(); return; }
   var payload = {
     id: M.id, titulo: M.titulo, descricao: M.descricao, prioridade: M.prioridade, prazo: M.prazo,
-    responsaveis: M.responsaveis.slice(), tiposArquivo: M.tiposArquivo.slice(), extensoes: M.extensoes
+    responsaveis: M.responsaveis.slice(), tiposArquivo: M.tipo === 'consulta' ? [] : M.tiposArquivo.slice(),
+    extensoes: M.tipo === 'consulta' ? '' : M.extensoes, tipo: M.tipo
   };
   var enviar = !!M.enviar;
   S.busy.task = true; renderModal();
@@ -1256,7 +1364,7 @@ setInterval(function () {
  * Modo demonstração (quando aberto fora do Apps Script)
  * ===================================================================== */
 var Demo = (function () {
-  var KEY = 'prisma-tarefas-demo-v1';
+  var KEY = 'prisma-tarefas-demo-v2';
   var db;
   function uid() { return Math.random().toString(36).slice(2, 12); }
   function now() { return new Date().toISOString(); }
@@ -1288,7 +1396,14 @@ var Demo = (function () {
       T(5, 'Roteiro do vídeo de apresentação', 'Vídeo de 60s apresentando a chapa. Roteiro com falas e cenas.', 'media', 'a_fazer', ['ana'], day(7), ['pdf'], []),
       T(6, 'Orçar camisetas com duas gráficas', 'Pelo menos 2 orçamentos para 80 camisetas, estampa frente e costas.', 'baixa', 'a_fazer', ['bruno', 'carla'], day(12), ['pdf'], []),
       T(7, 'Logo final em vetor', 'Exportar símbolo e assinatura horizontal em SVG e PDF.', 'media', 'concluida', ['diego'], day(-3), ['qualquer'], ['diego'], { concluidoEm: dAgo(30) }),
-      T(8, 'Lista de apoiadores por curso', 'Nome, curso e ano de quem já topou apoiar.', 'media', 'em_andamento', ['duda'], day(-2), ['planilha'], ['duda'])
+      T(8, 'Lista de apoiadores por curso', 'Nome, curso e ano de quem já topou apoiar.', 'media', 'em_andamento', ['duda'], day(-2), ['planilha'], ['duda']),
+      T(9, 'Você consegue ir na reunião de sexta às 18h?', 'Reunião geral para fechar as propostas, na sala do grêmio.', 'alta', 'em_andamento', ['ana', 'bruno', 'carla', 'diego', 'duda'], day(1), [], ['ana', 'bruno', 'diego'], {
+        tipo: 'consulta', respostas: [
+          { pessoaId: 'ana', de: 'ana.souza@exemplo.com', nome: 'Ana Beatriz Souza', resposta: 'sim', quando: dAgo(5) },
+          { pessoaId: 'bruno', de: 'bruno.tanaka@exemplo.com', nome: 'Bruno Tanaka', resposta: 'nao', quando: dAgo(4) },
+          { pessoaId: 'diego', de: 'diego.rocha@exemplo.com', nome: 'Diego Rocha', resposta: 'sim', quando: dAgo(2) }
+        ]
+      })
     ];
     var eventos = [
       { tarefaId: 't2', tipo: 'entrega', texto: 'Bruno Tanaka entregou T-002 (1 arquivo) — aguardando verificação.', quando: dAgo(3) },
@@ -1297,7 +1412,7 @@ var Demo = (function () {
       { tarefaId: 't7', tipo: 'concluida', texto: 'T-007 aprovada e concluída.', quando: dAgo(30) },
       { tarefaId: 't3', tipo: 'email', texto: 'E-mail com a tarefa enviado para Carla Mendes.', quando: dAgo(40) }
     ].map(function (e) { e.id = uid(); return e; });
-    return { pessoas: P, tarefas: tarefas, mensagens: [], eventos: eventos, next: 9, sent: 6, last: dAgo(0.1) };
+    return { pessoas: P, tarefas: tarefas, mensagens: [], eventos: eventos, next: 10, sent: 11, last: dAgo(0.1) };
   }
   function loadDb() { try { var d = JSON.parse(localStorage.getItem(KEY)); if (d && d.pessoas) return d; } catch (e) {} return seed(); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
@@ -1348,14 +1463,15 @@ var Demo = (function () {
     },
     apiSaveTask: function (input, enviar) {
       var exts = String(input.extensoes || '').split(/[\s,;]+/).map(function (e) { return e.replace(/^\.+/, '').toLowerCase().replace(/[^a-z0-9]/g, ''); }).filter(Boolean);
-      var f = { titulo: input.titulo.trim(), descricao: (input.descricao || '').trim(), prioridade: input.prioridade, responsaveis: input.responsaveis, tiposArquivo: input.tiposArquivo, extensoes: exts, prazo: input.prazo || '', atualizadoEm: now() };
+      var poll = input.tipo === 'consulta';
+      var f = { titulo: input.titulo.trim(), descricao: (input.descricao || '').trim(), prioridade: input.prioridade, responsaveis: input.responsaveis, tiposArquivo: poll ? [] : input.tiposArquivo, extensoes: poll ? [] : exts, prazo: input.prazo || '', tipo: poll ? 'consulta' : 'tarefa', atualizadoEm: now() };
       var t, novos;
       if (input.id) {
         t = T(input.id); novos = f.responsaveis.filter(function (id) { return t.responsaveis.indexOf(id) < 0; });
         Object.assign(t, f); t.confirmados = t.confirmados.filter(function (id) { return f.responsaveis.indexOf(id) >= 0; });
         ev(t.id, 'editada', t.codigo + ' foi editada.');
       } else {
-        t = Object.assign({ id: uid(), codigo: 'T-' + ('00' + db.next++).slice(-3), status: 'a_fazer', confirmados: [], entregas: [], criadoEm: now(), concluidoEm: '' }, f);
+        t = Object.assign({ id: uid(), codigo: 'T-' + ('00' + db.next++).slice(-3), status: 'a_fazer', confirmados: [], entregas: [], respostas: [], criadoEm: now(), concluidoEm: '' }, f);
         db.tarefas.push(t); novos = f.responsaveis;
         ev(t.id, 'criada', t.codigo + ' criada · prioridade ' + PRIOS[t.prioridade].label.toLowerCase() + '.');
       }
@@ -1377,6 +1493,21 @@ var Demo = (function () {
         ev(t.id, 'devolvida', t.codigo + ' devolvida com ajustes: “' + opts.nota + '”');
         mail(t.responsaveis); aviso += ' Pedido de ajustes enviado.';
       } else ev(t.id, 'status', t.codigo + ': ' + STATUS_LABEL[before] + ' → ' + STATUS_LABEL[status] + '.');
+      return boot(aviso);
+    },
+    apiAnswer: function (id, pid, resp) {
+      var t = T(id), pp = db.pessoas.find(function (x) { return x.id === pid; });
+      t.respostas = (t.respostas || []).filter(function (a) { return a.pessoaId !== pid; });
+      t.respostas.push({ pessoaId: pid, de: pp.email, nome: pp.nome, resposta: resp, quando: now() });
+      if (t.confirmados.indexOf(pid) < 0) t.confirmados.push(pid);
+      ev(t.id, 'resposta', pp.nome + ' respondeu ' + (resp === 'sim' ? 'SIM' : 'NÃO') + ' à consulta ' + t.codigo + ' (registrado no painel).');
+      var answered = t.respostas.map(function (a) { return a.pessoaId; });
+      var aviso = 'Resposta de ' + firstName(pp.nome) + ' registrada.';
+      if (t.responsaveis.every(function (r) { return answered.indexOf(r) >= 0; })) {
+        t.status = 'concluida'; t.concluidoEm = now(); aviso += ' Todos responderam: consulta encerrada.';
+        ev(t.id, 'concluida', 'Consulta ' + t.codigo + ' encerrada: todos responderam.');
+      } else if (t.status === 'a_fazer') t.status = 'em_andamento';
+      t.atualizadoEm = now();
       return boot(aviso);
     },
     apiStart: function (id, pid) {

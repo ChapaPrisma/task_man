@@ -12,6 +12,7 @@ Painel de tarefas da **Chapa Prisma (Grêmio Politécnico)**. Tudo gira em torno
 - quem **responde o e-mail para chapa.poli.prisma@gmail.com com o arquivo** faz a tarefa ir sozinha para **Verificar**: o anexo é salvo no Drive e a pessoa recebe uma confirmação;
 - você confere e clica em **Aprovar e concluir**, ou **Devolver com ajustes** (vai um e-mail com o que mudar);
 - também dá para mandar **mensagens avulsas** para uma pessoa só (ou várias).
+- **consultas sim/não**: em vez de uma tarefa, mande uma pergunta. Cada pessoa recebe um e-mail pedindo para responder **só SIM ou NÃO**; o painel mostra quantos sim, quantos não e quem respondeu o quê. Respostas fora do formato recebem um pedido automático para responder só sim ou não; vale a última resposta de cada pessoa; quando todos respondem, a consulta é encerrada sozinha.
 - pessoas marcadas como **administrador(a)** podem marcar **Comecei** e **✓ Concluir** nas próprias tarefas direto no painel, sem responder o e-mail.
 
 | Prioridade | Cor | Quando usar |

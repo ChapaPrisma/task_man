@@ -50,12 +50,13 @@ const FILE_KINDS = {
 const TABLES = {
   pessoas:     ['id', 'nome', 'email', 'cargo', 'criadoEm', 'admin'],
   tarefas:     ['id', 'codigo', 'titulo', 'descricao', 'prioridade', 'status', 'responsaveis', 'prazo',
-                'tiposArquivo', 'extensoes', 'confirmados', 'entregas', 'criadoEm', 'atualizadoEm', 'concluidoEm'],
+                'tiposArquivo', 'extensoes', 'confirmados', 'entregas', 'criadoEm', 'atualizadoEm', 'concluidoEm',
+                'tipo', 'respostas'],
   mensagens:   ['id', 'para', 'assunto', 'corpo', 'enviadoEm'],
   eventos:     ['id', 'tarefaId', 'tipo', 'texto', 'quando'],
   processados: ['messageId', 'quando']
 };
-const JSON_COLS = new Set(['responsaveis', 'tiposArquivo', 'extensoes', 'confirmados', 'entregas', 'para']);
+const JSON_COLS = new Set(['responsaveis', 'tiposArquivo', 'extensoes', 'confirmados', 'entregas', 'para', 'respostas']);
 
 /* =========================================================================
  * Web app
@@ -76,7 +77,7 @@ function doPost(e) {
   const API = {
     apiLogin: apiLogin, apiBootstrap: apiBootstrap, apiSavePeople: apiSavePeople,
     apiDeletePerson: apiDeletePerson, apiSaveTask: apiSaveTask, apiDeleteTask: apiDeleteTask,
-    apiSetStatus: apiSetStatus, apiStart: apiStart, apiResend: apiResend, apiSendMessage: apiSendMessage, apiScanNow: apiScanNow
+    apiSetStatus: apiSetStatus, apiStart: apiStart, apiAnswer: apiAnswer, apiResend: apiResend, apiSendMessage: apiSendMessage, apiScanNow: apiScanNow
   };
   let out;
   try {
@@ -251,6 +252,9 @@ function apiSaveTask(token, input, enviar) {
       prazo: /^\d{4}-\d{2}-\d{2}$/.test(input.prazo || '') ? input.prazo : '',
       atualizadoEm: nowIso_()
     };
+    const poll = input.tipo === 'consulta';
+    fields.tipo = poll ? 'consulta' : 'tarefa';
+    if (poll) { fields.tiposArquivo = []; fields.extensoes = []; }
     const events = [];
     let task, novos;
     if (input.id) {
@@ -263,11 +267,11 @@ function apiSaveTask(token, input, enviar) {
     } else {
       task = Object.assign({
         id: newId_(), codigo: nextCode_(tasks), status: 'a_fazer',
-        confirmados: [], entregas: [], criadoEm: nowIso_(), concluidoEm: ''
+        confirmados: [], entregas: [], respostas: [], criadoEm: nowIso_(), concluidoEm: ''
       }, fields);
       tasks.push(task);
       novos = fields.responsaveis;
-      events.push(evt_(task.id, 'criada', task.codigo + ' criada · prioridade ' + PRIORITIES[task.prioridade].label.toLowerCase() + '.'));
+      events.push(evt_(task.id, 'criada', (poll ? 'Consulta ' : '') + task.codigo + ' criada · prioridade ' + PRIORITIES[task.prioridade].label.toLowerCase() + '.'));
     }
     writeTable_('tarefas', tasks);
 
@@ -319,7 +323,8 @@ function apiSetStatus(token, id, status, opts) {
     let aviso = t.codigo + ' → ' + STATUS_LABELS[status] + '.';
 
     if (status === 'concluida') {
-      events.push(evt_(t.id, 'concluida', t.codigo + (opts.peloPainel ? ' concluída pela administração no painel.' : ' aprovada e concluída.')));
+      events.push(evt_(t.id, 'concluida', isPoll_(t) ? 'Consulta ' + t.codigo + ' encerrada (' + pollSummary_(t) + ').'
+        : t.codigo + (opts.peloPainel ? ' concluída pela administração no painel.' : ' aprovada e concluída.')));
       // Concluída pelo painel: os administradores já sabem, avisa só os demais.
       const alvo = t.responsaveis.filter(pid => !opts.peloPainel || !isAdmin_(people.find(p => p.id === pid)));
       if (opts.notificar && alvo.length) {
@@ -359,6 +364,24 @@ function apiStart(token, taskId, personId) {
   });
 }
 
+/** Registra pelo painel uma resposta SIM/NÃO dada por outro canal. resposta: 'sim' | 'nao' */
+function apiAnswer(token, taskId, personId, resposta) {
+  requireAuth_(token);
+  return withLock_(() => {
+    if (resposta !== 'sim' && resposta !== 'nao') throw new Error('Resposta inválida.');
+    const tasks = readTable_('tarefas');
+    const people = readTable_('pessoas');
+    const t = tasks.find(x => x.id === taskId);
+    const p = people.find(x => x.id === personId);
+    if (!t || !p) throw new Error('Consulta ou pessoa não encontrada.');
+    const events = [];
+    recordAnswer_(t, p, p.email, p.nome, resposta, new Date(), events, ' (registrado no painel)');
+    writeTable_('tarefas', tasks);
+    appendRows_('eventos', events);
+    return withNotice_('Resposta de ' + firstName_(p.nome) + ' registrada.' + (t.status === 'concluida' ? ' Todos responderam: consulta encerrada.' : ''));
+  });
+}
+
 /** Reenvia a tarefa como lembrete (para quem ainda não entregou). */
 function apiResend(token, id) {
   requireAuth_(token);
@@ -367,7 +390,7 @@ function apiResend(token, id) {
     const people = readTable_('pessoas');
     const t = tasks.find(x => x.id === id);
     if (!t) throw new Error('Tarefa não encontrada.');
-    const entregaram = new Set(t.entregas.map(e => e.pessoaId).filter(Boolean));
+    const entregaram = new Set((isPoll_(t) ? (t.respostas || []) : t.entregas).map(e => e.pessoaId).filter(Boolean));
     let alvo = t.responsaveis.filter(pid => !entregaram.has(pid));
     if (!alvo.length) alvo = t.responsaveis;
     if (!alvo.length) throw new Error('Esta tarefa não tem responsáveis.');
@@ -466,6 +489,19 @@ function scanInbox_() {
     const atts = msg.getAttachments({ includeInlineImages: false, includeAttachments: true });
     const body = stripQuoted_(msg.getPlainBody() || '');
     const head = normalize_(body.slice(0, 400));
+    if (isPoll_(task)) {
+      const resposta = parseYesNo_(body);
+      if (resposta) {
+        recordAnswer_(task, person, from, nome, resposta, msg.getDate(), events, '');
+        changed = true; r.respostas++;
+      } else {
+        r.recusas++;
+        events.push(evt_(task.id, 'recusada', nome + ' respondeu a consulta ' + task.codigo + ' fora do formato: “' +
+          body.slice(0, 120).replace(/\s+/g, ' ').trim() + '”. Pedimos para responder só SIM ou NÃO.'));
+        safeReply_(msg, yesNoHelpEmail_(task, nome));
+      }
+      return;
+    }
     const disseInicio = /\b(comecar|comecei|comecando|iniciar|iniciei|iniciando|aceito|ciente)\b/.test(head);
     const disseEntrega = /\b(entregue|entrego|entreguei|feito|feita|concluido|concluida|pronto|pronta|finalizado|finalizei|segue)\b/.test(head);
 
@@ -556,7 +592,7 @@ function sendTaskEmails_(task, personIds, people, kind, nota) {
   personIds.forEach(pid => {
     const p = people.find(x => x.id === pid);
     if (!p) return;
-    const mail = taskEmail_(task, p, people, kind, nota);
+    const mail = isPoll_(task) ? pollEmail_(task, p, kind) : taskEmail_(task, p, people, kind, nota);
     try {
       GmailApp.sendEmail(p.email, mail.subject, mail.text,
         { htmlBody: mail.html, name: CONFIG.SENDER_NAME, replyTo: CONFIG.HUB_EMAIL });
@@ -637,6 +673,53 @@ function taskEmail_(task, person, people, kind, nota) {
   ].filter(l => l !== null).join('\n');
 
   return { subject: subjects[kind], html: emailShell_(html), text: text };
+}
+
+function pollEmail_(task, person, kind) {
+  const pr = PRIORITIES[task.prioridade] || PRIORITIES.media;
+  const tag = '[' + CONFIG.SUBJECT_TAG + ' ' + task.codigo + ']';
+  const subject = tag + (kind === 'lembrete' ? ' Lembrete — Consulta: ' : kind === 'concluida' ? ' Consulta encerrada: ' : ' Consulta: ') + task.titulo;
+  const prazo = task.prazo ? fmtDatePt_(task.prazo) : '';
+  const intro = kind === 'lembrete' ? 'Ainda não recebemos sua resposta para esta consulta da Chapa Prisma:'
+    : kind === 'concluida' ? 'Esta consulta foi encerrada. Obrigado por responder!'
+    : 'A Chapa Prisma quer saber:';
+  let html = '<p style="margin:0 0 6px;font-size:16px">Olá, ' + esc_(firstName_(person.nome)) + '!</p>' +
+    '<p style="margin:0 0 16px;font-size:15px;color:#3A4160">' + intro + '</p>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:6px solid ' + pr.color + ';background:#FFFFFF;margin:0 0 20px"><tr><td style="padding:18px 20px">' +
+      '<div style="font-family:\'Courier New\',monospace;font-size:12px;color:#5A607A;letter-spacing:1px">' + task.codigo + ' · CONSULTA</div>' +
+      '<div style="font-size:22px;font-weight:bold;margin:6px 0 0;color:#1B2340;line-height:1.3">' + esc_(task.titulo) + '</div>' +
+      (prazo ? '<div style="font-family:\'Courier New\',monospace;font-size:12px;color:#3A4160;margin-top:10px">Responder até: ' + esc_(prazo) + '</div>' : '') +
+    '</td></tr></table>';
+  if (task.descricao && kind !== 'concluida') {
+    html += sectionTitle_('Contexto') + '<div style="font-size:15px;line-height:1.6;margin:0 0 20px">' + nl2br_(esc_(task.descricao)) + '</div>';
+  }
+  if (kind !== 'concluida') {
+    html += '<div style="background:#1B2340;color:#F4F2EC;padding:18px 20px">' +
+      '<div style="font-family:\'Courier New\',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#AEB3C7;margin:0 0 8px">Como responder</div>' +
+      '<div style="font-size:16px;line-height:1.6">Responda este e-mail escrevendo <b>apenas SIM</b> ou <b>apenas NÃO</b>, sem mais nada na mensagem.</div>' +
+      '<div style="font-size:13px;line-height:1.5;color:#AEB3C7;margin-top:8px">Respostas em outro formato não são registradas. A resposta vai para ' + CONFIG.HUB_EMAIL +
+      ' (basta clicar em “Responder” e manter ' + tag + ' no assunto). Se mudar de ideia, responda de novo: vale a última.</div>' +
+    '</div>';
+  }
+  const text = [
+    'Olá, ' + firstName_(person.nome) + '!', '', intro, '',
+    task.codigo + ' · CONSULTA', task.titulo, prazo ? 'Responder até: ' + prazo : '', '',
+    task.descricao && kind !== 'concluida' ? 'CONTEXTO\n' + task.descricao + '\n' : '',
+    kind !== 'concluida' ? 'COMO RESPONDER\nResponda este e-mail escrevendo APENAS "SIM" ou APENAS "NÃO", sem mais nada na mensagem. ' +
+      'Respostas em outro formato não são registradas. Mantenha ' + tag + ' no assunto.' : '',
+    '', '— ' + CONFIG.SENDER_NAME
+  ].join('\n');
+  return { subject: subject, html: emailShell_(html), text: text };
+}
+
+function yesNoHelpEmail_(task, nome) {
+  const html = emailShell_(
+    '<p style="margin:0 0 12px;font-size:16px">Oi, ' + esc_(firstName_(nome)) + '!</p>' +
+    '<p style="margin:0 0 12px;font-size:15px;line-height:1.5">Não conseguimos registrar sua resposta para a consulta <b>' + task.codigo + ' — ' + esc_(task.titulo) + '</b>.</p>' +
+    '<p style="margin:0;font-size:16px">Responda este e-mail escrevendo <b>apenas SIM</b> ou <b>apenas NÃO</b>, sem mais nada.</p>');
+  const text = 'Não conseguimos registrar sua resposta para a consulta ' + task.codigo + ' — ' + task.titulo +
+    '. Responda este e-mail escrevendo apenas SIM ou apenas NÃO, sem mais nada.\n\n— ' + CONFIG.SENDER_NAME;
+  return { text: text, html: html };
 }
 
 function ackEmail_(task, nome, arquivos) {
@@ -916,6 +999,43 @@ function newId_() { return Utilities.getUuid().replace(/-/g, '').slice(0, 10); }
 function nowIso_() { return new Date().toISOString(); }
 function clean_(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
 function normEmail_(s) { return String(s || '').trim().toLowerCase(); }
+function isPoll_(t) { return !!t && t.tipo === 'consulta'; }
+
+/** Lê SIM/NÃO da primeira linha não vazia. Retorna 'sim', 'nao' ou '' (fora do formato). */
+function parseYesNo_(body) {
+  const first = String(body || '').split('\n').map(l => l.trim()).filter(Boolean)[0] || '';
+  const w = normalize_(first).replace(/[^a-z]+/g, ' ').trim();
+  if (/^(sim|s|yes)$/.test(w)) return 'sim';
+  if (/^(nao|n|no)$/.test(w)) return 'nao';
+  return '';
+}
+
+function pollSummary_(t) {
+  const sim = (t.respostas || []).filter(a => a.resposta === 'sim').length;
+  const nao = (t.respostas || []).filter(a => a.resposta === 'nao').length;
+  return sim + ' sim, ' + nao + ' não';
+}
+
+/** Registra (ou troca) a resposta de alguém e encerra a consulta quando todos responderem. */
+function recordAnswer_(task, person, de, nome, resposta, quando, events, sufixo) {
+  const pid = person ? person.id : '';
+  task.respostas = (task.respostas || []).filter(a => pid ? a.pessoaId !== pid : a.de !== de);
+  task.respostas.push({ pessoaId: pid, de: de, nome: nome, resposta: resposta, quando: new Date(quando).toISOString() });
+  if (pid && task.confirmados.indexOf(pid) < 0) task.confirmados.push(pid);
+  task.atualizadoEm = nowIso_();
+  events.push(evt_(task.id, 'resposta', nome + ' respondeu ' + (resposta === 'sim' ? 'SIM' : 'NÃO') + ' à consulta ' + task.codigo + (sufixo || '') + '.'));
+  const respondidos = new Set(task.respostas.map(a => a.pessoaId).filter(Boolean));
+  if (task.responsaveis.length && task.responsaveis.every(id => respondidos.has(id))) {
+    if (task.status !== 'concluida') {
+      task.status = 'concluida';
+      task.concluidoEm = nowIso_();
+      events.push(evt_(task.id, 'concluida', 'Consulta ' + task.codigo + ' encerrada: todos responderam (' + pollSummary_(task) + ').'));
+    }
+  } else if (task.status === 'a_fazer') {
+    task.status = 'em_andamento';
+  }
+}
+
 function isAdmin_(p) { return !!p && (p.admin === 'sim' || p.admin === true); }
 function isEmail_(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
 function unique_(a) { return Array.from(new Set(a)); }
