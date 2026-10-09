@@ -1,7 +1,7 @@
 # Prisma — Painel de tarefas
 
-> **Painel:** <https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec>  
-> Abre em qualquer navegador ou celular e pede a **senha do painel** (combinada pela chapa).
+> **Painel:** <https://chapaprisma.github.io/task_man/>  
+> Abre em qualquer navegador ou celular, mesmo com várias contas Google logadas, e pede a **senha do painel** (combinada pela chapa).
 
 Painel de tarefas da **Chapa Prisma (Grêmio Politécnico)**. Tudo gira em torno de **chapa.poli.prisma@gmail.com**:
 
@@ -30,7 +30,7 @@ Status: **A fazer → Em andamento → Verificar → Concluída**. No quadro dá
 
 | Peça | Onde fica |
 |---|---|
-| Painel (site) | App da Web do Apps Script (`index.html`) |
+| Painel (site) | GitHub Pages (`index.html`), que conversa com o Apps Script por `fetch` (função `doPost`) |
 | Envio de e-mails | Gmail da conta da chapa (`GmailApp`) |
 | Leitura das entregas | Varredura da caixa de entrada a cada 5 min (gatilho) + botão **Verificar caixa** |
 | Banco de dados | Planilha Google *“Prisma — Tarefas (banco de dados)”*, criada automaticamente |
@@ -84,6 +84,12 @@ clasp open                  # rode `setup` no editor e depois implante como App 
 Cole/`clasp push` os arquivos e em **Implantar → Gerenciar implantações → ✏️ → Versão: Nova versão → Implantar**. A URL continua a mesma.
 
 ---
+
+## Por que o painel fica no GitHub Pages
+
+Quando o navegador tem várias contas Google logadas, o Google quebra as chamadas internas dos apps do Apps Script (só funcionava em janela anônima). Por isso o painel é servido em **chapaprisma.github.io/task_man** e fala com o Apps Script pela URL `/exec` usando `fetch`, sem enviar os cookies do Google. A URL do Apps Script fica em `API_URL` no `index.html`. Se um dia fizer uma **nova implantação** (URL nova), atualize `API_URL`. Atualizar uma implantação existente com “Nova versão” mantém a URL.
+
+A própria URL do Apps Script continua abrindo o painel, mas só funciona em janela anônima ou com uma única conta Google logada.
 
 ## Quem pode usar o painel
 

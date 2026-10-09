@@ -316,7 +316,7 @@ label.l{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em
  * Constantes (manter iguais às do Code.gs)
  * ===================================================================== */
 var HUB = 'chapa.poli.prisma@gmail.com';
-var PANEL_URL = 'https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbwJLaxf6T9DADYzttqVzCn1v3ERzH3N9fAImRKFIh7hXKZvHrNu80dPwXUBxV23RYvUXg/exec';
 var PRIOS = {
   urgente: { label: 'Urgente', c: '#E8906A', soft: '#F8E1D6', rank: 0, hint: 'hoje ou amanhã' },
   alta:    { label: 'Alta',    c: '#E0B44E', soft: '#F6EBCB', rank: 1, hint: 'esta semana' },
@@ -343,6 +343,11 @@ var EVENT_COLORS = {
 };
 var AV_COLORS = ['#E8906A', '#E0B44E', '#5BB4E0', '#C9B8E8', '#9FD4B4', '#F2B8A2'];
 var IS_GAS = !!(window.google && google.script && google.script.run);
+// 'gas'  = servido pelo próprio Apps Script (google.script.run)
+// 'api'  = servido em outro lugar (GitHub Pages) falando com o Apps Script por fetch.
+//          Não envia cookies do Google, então funciona com várias contas logadas.
+// 'demo' = aberto como arquivo local ou com ?demo: dados de exemplo no navegador.
+var MODE = IS_GAS ? 'gas' : (location.protocol === 'file:' || /[?&]demo(=|&|$)/.test(location.search)) ? 'demo' : 'api';
 
 /* =====================================================================
  * Estado
@@ -367,21 +372,31 @@ function setToken(t) {
   try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (e) {}
 }
 
+function apiFail(msg, reject) {
+  msg = String(msg || 'Erro desconhecido.');
+  if (/AUTH:/.test(msg)) {
+    setToken(null); S.data = null; M = null; S.open = null;
+    renderLogin('Sua sessão expirou. Entre de novo.');
+    return reject(new Error('Entre com a senha do painel.'));
+  }
+  reject(new Error(msg.replace(/^(Exception|Error):\s*/, '')));
+}
+
 function api(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
+  var sent = fn === 'apiLogin' ? args : [TOKEN].concat(args);
   return new Promise(function (resolve, reject) {
-    if (IS_GAS) {
+    if (MODE === 'gas') {
       var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) {
-        var msg = e && e.message ? e.message : String(e);
-        if (/^AUTH:/.test(msg) || /AUTH: /.test(msg)) {
-          setToken(null); S.data = null; M = null;
-          renderLogin('Sua sessão expirou. Entre de novo.');
-          return reject(new Error('Entre com a senha do painel.'));
-        }
-        reject(new Error(msg.replace(/^Exception:\s*/, '')));
+        apiFail(e && e.message ? e.message : String(e), reject);
       });
-      if (fn === 'apiLogin') r[fn].apply(r, args);
-      else r[fn].apply(r, [TOKEN].concat(args));
+      r[fn].apply(r, sent);
+    } else if (MODE === 'api') {
+      // text/plain evita a requisição prévia de CORS; o Apps Script responde com JSON.
+      fetch(API_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify({ fn: fn, args: sent }) })
+        .then(function (r) { return r.json(); })
+        .then(function (res) { if (res && res.ok) resolve(res.data); else apiFail(res && res.error, reject); })
+        .catch(function () { reject(new Error('Não consegui falar com o servidor da chapa. Verifique a internet e tente de novo.')); });
     } else {
       setTimeout(function () {
         try { resolve(Demo[fn].apply(null, args)); } catch (e) { reject(e); }
@@ -515,7 +530,7 @@ function render() {
   var verif = S.data.tarefas.filter(function (t) { return t.status === 'verificar'; }).length;
 
   var banners = '';
-  if (m.demo) banners += '<div class="banner demo"><b>Modo demonstração.</b> Os dados ficam só neste navegador e os e-mails são simulados. <a href="' + PANEL_URL + '" target="_blank" rel="noopener"><b>Abrir o painel real ↗</b></a> (só abre logado em ' + HUB + ').<button class="btn btn-ghost btn-sm" data-act="demo-reset" style="margin-left:auto">Restaurar exemplo</button></div>';
+  if (m.demo) banners += '<div class="banner demo"><b>Modo demonstração.</b> Os dados ficam só neste navegador e os e-mails são simulados. <a href="https://chapaprisma.github.io/task_man/" target="_blank" rel="noopener"><b>Abrir o painel real ↗</b></a><button class="btn btn-ghost btn-sm" data-act="demo-reset" style="margin-left:auto">Restaurar exemplo</button></div>';
   if (!m.demo && m.contaAtual && m.contaAtual.toLowerCase() !== HUB) banners += '<div class="banner warn"><b>Atenção:</b> o painel está rodando como ' + esc(m.contaAtual) + '. Para que tudo passe por ' + HUB + ', implante o projeto a partir dessa conta.</div>';
   if (!m.demo && !m.gatilhoAtivo) banners += '<div class="banner warn"><b>Varredura automática desligada.</b> Rode a função <span class="mono">setup</span> uma vez no editor do Apps Script — até lá, use “Verificar caixa”.</div>';
 
@@ -1200,10 +1215,10 @@ document.addEventListener('submit', function (e) {
 });
 
 function load() {
-  if (IS_GAS && !TOKEN) { renderLogin(); return Promise.resolve(); }
+  if (MODE !== 'demo' && !TOKEN) { renderLogin(); return Promise.resolve(); }
   return api('apiBootstrap').then(function (d) { S.data = d; render(); })
     .catch(function (e) {
-      if (!TOKEN && IS_GAS) return; // tela de login já exibida
+      if (!TOKEN && MODE !== 'demo') return; // tela de login já exibida
       $('#app').innerHTML = '<div class="loading"><div class="word">PRISMA</div><p style="max-width:420px;text-align:center;line-height:1.5">Não foi possível carregar o painel.<br><span class="mono small">' + esc(e.message) + '</span></p></div>';
     });
 }

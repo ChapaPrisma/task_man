@@ -66,6 +66,29 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
+/**
+ * API JSON para o painel hospedado fora do Apps Script (GitHub Pages).
+ * O navegador chama sem cookies do Google, então funciona mesmo com várias
+ * contas logadas. Corpo (text/plain): {"fn":"apiBootstrap","args":["<token>"]}
+ */
+function doPost(e) {
+  const API = {
+    apiLogin: apiLogin, apiBootstrap: apiBootstrap, apiSavePeople: apiSavePeople,
+    apiDeletePerson: apiDeletePerson, apiSaveTask: apiSaveTask, apiDeleteTask: apiDeleteTask,
+    apiSetStatus: apiSetStatus, apiResend: apiResend, apiSendMessage: apiSendMessage, apiScanNow: apiScanNow
+  };
+  let out;
+  try {
+    const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    const fn = API[req.fn];
+    if (!fn) throw new Error('Função desconhecida.');
+    out = { ok: true, data: fn.apply(null, Array.isArray(req.args) ? req.args : []) };
+  } catch (err) {
+    out = { ok: false, error: String((err && err.message) || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
 /* =========================================================================
  * Instalação — rode UMA vez pelo editor (menu ▶ Executar › setup)
  * ========================================================================= */
