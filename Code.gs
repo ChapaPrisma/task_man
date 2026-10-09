@@ -116,12 +116,11 @@ function setup() {
 
 /**
  * Diagnóstico — rode pelo editor (▶ Executar › testarEmail).
- * Envia um e-mail de teste para a última pessoa cadastrada (ou para a própria conta)
+ * Envia um e-mail de teste para a própria conta da chapa (nunca para membros)
  * e mostra no registro a cota restante ou o erro exato do Google.
  */
 function testarEmail() {
-  const people = readTable_('pessoas');
-  const to = people.length ? people[people.length - 1].email : Session.getEffectiveUser().getEmail();
+  const to = Session.getEffectiveUser().getEmail();
   Logger.log('Conta que envia: ' + Session.getEffectiveUser().getEmail());
   Logger.log('Cota de e-mails restante hoje: ' + MailApp.getRemainingDailyQuota());
   GmailApp.sendEmail(to, '[' + CONFIG.SUBJECT_TAG + '] Teste de envio',
