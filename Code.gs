@@ -34,7 +34,7 @@ const STATUS_LABELS = {
   concluida: 'Concluída'
 };
 
-// Mantenha igual à lista FILE_KINDS do Index.html
+// Mantenha igual à lista FILE_KINDS do index.html
 const FILE_KINDS = {
   pdf:          { label: 'PDF',          exts: ['pdf'] },
   imagem:       { label: 'Imagem',       exts: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'heic', 'svg'] },
@@ -61,7 +61,7 @@ const JSON_COLS = new Set(['responsaveis', 'tiposArquivo', 'extensoes', 'confirm
  * ========================================================================= */
 
 function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('Prisma — Tarefas')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }

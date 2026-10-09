@@ -27,7 +27,7 @@ Status: **A fazer → Em andamento → Verificar → Concluída**. No quadro dá
 
 | Peça | Onde fica |
 |---|---|
-| Painel (site) | App da Web do Apps Script (`Index.html`) |
+| Painel (site) | App da Web do Apps Script (`index.html`) |
 | Envio de e-mails | Gmail da conta da chapa (`GmailApp`) |
 | Leitura das entregas | Varredura da caixa de entrada a cada 5 min (gatilho) + botão **Verificar caixa** |
 | Banco de dados | Planilha Google *“Prisma — Tarefas (banco de dados)”*, criada automaticamente |
@@ -55,7 +55,7 @@ Cada e-mail de tarefa sai com o assunto `[PRISMA T-012] Título`. A varredura pr
 3. No editor:
    - abra `Código.gs`, apague tudo e cole o conteúdo de [`Code.gs`](Code.gs);
    - abra `appsscript.json` e cole o conteúdo de [`appsscript.json`](appsscript.json);
-   - clique em **+ → HTML**, nomeie **`Index`** (sem `.html`) e cole o conteúdo de [`Index.html`](Index.html).
+   - clique em **+ → HTML**, nomeie **`index`** (sem `.html`) e cole o conteúdo de [`index.html`](index.html).
 4. Salve. No topo, escolha a função **`setup`** e clique em **▶ Executar**.
    - Autorize o acesso. Como o app é seu, o Google mostra *“app não verificado”* → **Avançado → Acessar Prisma — Tarefas (não seguro)** → **Permitir**.
    - O `setup` cria a planilha, a pasta de entregas e o gatilho de varredura a cada 5 minutos.
@@ -94,12 +94,12 @@ Ajustes ficam no topo do `Code.gs`, em `CONFIG`: intervalo da varredura, respost
 
 ## Ver antes de instalar
 
-Abra o `Index.html` direto no navegador: ele entra em **modo demonstração**, com dados de exemplo salvos só no seu navegador e e-mails simulados. O botão **Verificar caixa** simula uma resposta por e-mail.
+Abra o `index.html` direto no navegador: ele entra em **modo demonstração**, com dados de exemplo salvos só no seu navegador e e-mails simulados. O botão **Verificar caixa** simula uma resposta por e-mail.
 
 ## Arquivos
 
 | Arquivo | O quê |
 |---|---|
 | `Code.gs` | Backend: API do painel, envio de e-mails, varredura da caixa de entrada, planilha e Drive |
-| `Index.html` | O painel (HTML, CSS e JS num arquivo só) + modo demonstração |
+| `index.html` | O painel (HTML, CSS e JS num arquivo só) + modo demonstração |
 | `appsscript.json` | Manifesto: fuso de São Paulo, app da web executado pela conta da chapa |
