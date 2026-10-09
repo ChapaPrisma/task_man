@@ -17,7 +17,8 @@ const CONFIG = {
   SCAN_EVERY_MINUTES: 5,                 // 1, 5, 10, 15 ou 30
   SCAN_WINDOW_DAYS: 45,                  // quantos dias de e-mail olhar a cada varredura
   SEND_ACK: true,                        // responde automaticamente confirmando a entrega
-  TIMEZONE: 'America/Sao_Paulo'
+  TIMEZONE: 'America/Sao_Paulo',
+  PANEL_URL: 'https://chapaprisma.github.io/task_man/'
 };
 
 const PRIORITIES = {
@@ -47,7 +48,7 @@ const FILE_KINDS = {
 };
 
 const TABLES = {
-  pessoas:     ['id', 'nome', 'email', 'cargo', 'criadoEm'],
+  pessoas:     ['id', 'nome', 'email', 'cargo', 'criadoEm', 'admin'],
   tarefas:     ['id', 'codigo', 'titulo', 'descricao', 'prioridade', 'status', 'responsaveis', 'prazo',
                 'tiposArquivo', 'extensoes', 'confirmados', 'entregas', 'criadoEm', 'atualizadoEm', 'concluidoEm'],
   mensagens:   ['id', 'para', 'assunto', 'corpo', 'enviadoEm'],
@@ -75,7 +76,7 @@ function doPost(e) {
   const API = {
     apiLogin: apiLogin, apiBootstrap: apiBootstrap, apiSavePeople: apiSavePeople,
     apiDeletePerson: apiDeletePerson, apiSaveTask: apiSaveTask, apiDeleteTask: apiDeleteTask,
-    apiSetStatus: apiSetStatus, apiResend: apiResend, apiSendMessage: apiSendMessage, apiScanNow: apiScanNow
+    apiSetStatus: apiSetStatus, apiStart: apiStart, apiResend: apiResend, apiSendMessage: apiSendMessage, apiScanNow: apiScanNow
   };
   let out;
   try {
@@ -197,10 +198,11 @@ function apiSavePeople(token, list) {
         if (!ex) { r.ignoradas++; return; }
         if (people.some(x => x.id !== p.id && x.email === email)) throw new Error('O e-mail ' + email + ' já está cadastrado.');
         Object.assign(ex, { nome: nome, email: email, cargo: cargo });
+        if ('admin' in p) ex.admin = p.admin ? 'sim' : '';
         r.atualizadas++;
       } else {
         if (people.some(x => x.email === email)) { r.ignoradas++; return; }
-        people.push({ id: newId_(), nome: nome, email: email, cargo: cargo, criadoEm: nowIso_() });
+        people.push({ id: newId_(), nome: nome, email: email, cargo: cargo, criadoEm: nowIso_(), admin: p.admin ? 'sim' : '' });
         r.adicionadas++;
       }
     });
@@ -317,9 +319,11 @@ function apiSetStatus(token, id, status, opts) {
     let aviso = t.codigo + ' → ' + STATUS_LABELS[status] + '.';
 
     if (status === 'concluida') {
-      events.push(evt_(t.id, 'concluida', t.codigo + ' aprovada e concluída.'));
-      if (opts.notificar && t.responsaveis.length) {
-        const s = sendTaskEmails_(t, t.responsaveis, people, 'concluida');
+      events.push(evt_(t.id, 'concluida', t.codigo + (opts.peloPainel ? ' concluída pela administração no painel.' : ' aprovada e concluída.')));
+      // Concluída pelo painel: os administradores já sabem, avisa só os demais.
+      const alvo = t.responsaveis.filter(pid => !opts.peloPainel || !isAdmin_(people.find(p => p.id === pid)));
+      if (opts.notificar && alvo.length) {
+        const s = sendTaskEmails_(t, alvo, people, 'concluida');
         if (s.ok.length) { events.push(evt_(t.id, 'email', 'Aviso de conclusão enviado para ' + s.ok.join(', ') + '.')); aviso += ' Responsáveis avisados.'; }
       }
     } else if (anterior === 'verificar' && nota) {
@@ -334,6 +338,24 @@ function apiSetStatus(token, id, status, opts) {
     writeTable_('tarefas', tasks);
     appendRows_('eventos', events);
     return withNotice_(aviso);
+  });
+}
+
+/** Administrador marca, pelo painel, que começou a trabalhar (equivale a responder COMEÇAR). */
+function apiStart(token, taskId, personId) {
+  requireAuth_(token);
+  return withLock_(() => {
+    const tasks = readTable_('tarefas');
+    const people = readTable_('pessoas');
+    const t = tasks.find(x => x.id === taskId);
+    const p = people.find(x => x.id === personId);
+    if (!t || !p) throw new Error('Tarefa ou pessoa não encontrada.');
+    const events = [];
+    markStarted_(t, p, p.nome, events);
+    events[0].texto = p.nome + ' começou a trabalhar em ' + t.codigo + ' (marcado no painel).';
+    writeTable_('tarefas', tasks);
+    appendRows_('eventos', events);
+    return withNotice_(firstName_(p.nome) + ' está trabalhando em ' + t.codigo + '.');
   });
 }
 
@@ -597,7 +619,8 @@ function taskEmail_(task, person, people, kind, nota) {
         : '<li>Ao terminar, responda este e-mail escrevendo <b>ENTREGUE</b>.</li>') +
       '<li>A resposta deve ir para <b>' + CONFIG.HUB_EMAIL + '</b> e manter <b>' + tag + '</b> no assunto (basta clicar em “Responder”).</li>' +
       '</ol>' +
-      '<p style="font-size:13px;color:#5A607A;margin:0">A entrega é registrada automaticamente e vai para verificação.</p>';
+      '<p style="font-size:13px;color:#5A607A;margin:0">A entrega é registrada automaticamente e vai para verificação.</p>' +
+      (isAdmin_(person) ? '<p style="font-size:14px;margin:16px 0 0;padding:12px 14px;background:#D6ECF7">Como você é da administração, também pode marcar <b>Comecei</b> e <b>Concluir</b> direto no <a href="' + CONFIG.PANEL_URL + '" style="color:#1B2340">painel de tarefas</a>.</p>' : '');
   }
 
   const text = [
@@ -693,10 +716,14 @@ function getSpreadsheet_() {
     props.setProperty('SPREADSHEET_ID', ss.getId());
   }
   Object.keys(TABLES).forEach(name => {
-    if (!ss.getSheetByName(name)) {
-      const sh = ss.insertSheet(name);
-      sh.getRange(1, 1, 1, TABLES[name].length).setValues([TABLES[name]]).setFontWeight('bold');
+    let sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
       sh.setFrozenRows(1);
+    }
+    const head = sh.getRange(1, 1, 1, TABLES[name].length);
+    if (head.getDisplayValues()[0].join('|') !== TABLES[name].join('|')) {
+      head.setValues([TABLES[name]]).setFontWeight('bold'); // cria ou acrescenta colunas novas
     }
   });
   ss.getSheets().forEach(sh => {
@@ -889,6 +916,7 @@ function newId_() { return Utilities.getUuid().replace(/-/g, '').slice(0, 10); }
 function nowIso_() { return new Date().toISOString(); }
 function clean_(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
 function normEmail_(s) { return String(s || '').trim().toLowerCase(); }
+function isAdmin_(p) { return !!p && (p.admin === 'sim' || p.admin === true); }
 function isEmail_(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
 function unique_(a) { return Array.from(new Set(a)); }
 function firstName_(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }

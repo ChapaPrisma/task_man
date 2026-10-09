@@ -171,6 +171,7 @@ label.l{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em
 .pcard{background:var(--paper);display:flex;flex-direction:column}
 .pcard .ph{display:flex;gap:12px;align-items:center;padding:16px 16px 12px}
 .pcard .pn{font-weight:700;font-size:16px}
+.adm{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:var(--navy);color:#F4F2EC;padding:2px 6px;vertical-align:2px;font-weight:500}
 .pcard .pe{font-family:var(--mono);font-size:12px;color:var(--ink-3);word-break:break-all}
 .pcard .pc{font-size:12px;color:var(--ink-2);margin-top:2px}
 .load{display:flex;height:6px;margin:0 16px;background:var(--line-2)}
@@ -454,6 +455,7 @@ function initials(n) { var p = String(n || '?').trim().split(/\s+/); return ((p[
 function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
 function avColor(id) { var h = 0; String(id).split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return AV_COLORS[h % AV_COLORS.length]; }
 function person(id) { return S.data.pessoas.find(function (p) { return p.id === id; }); }
+function isAdmin(p) { return !!p && (p.admin === true || p.admin === 'sim'); }
 function task(id) { return S.data.tarefas.find(function (t) { return t.id === id; }); }
 function prio(t) { return PRIOS[t.prioridade] || PRIOS.media; }
 function allowedExts(t) {
@@ -762,6 +764,7 @@ function viewPeople() {
       '<div><label class="l" for="p-nome">Nome</label><input class="field w" id="p-nome" required value="' + esc(ed ? ed.nome : '') + '" placeholder="Ana Beatriz Souza"></div>' +
       '<div><label class="l" for="p-email">E-mail</label><input class="field w" id="p-email" type="email" required value="' + esc(ed ? ed.email : '') + '" placeholder="ana@usp.br"></div>' +
       '<div><label class="l" for="p-cargo">Função na chapa <span style="text-transform:none;letter-spacing:0">(opcional)</span></label><input class="field w" id="p-cargo" value="' + esc(ed ? ed.cargo : '') + '" placeholder="Comunicação, Finanças, Eventos…"></div>' +
+      '<label class="check"><input type="checkbox" id="p-admin"' + (ed && isAdmin(ed) ? ' checked' : '') + '> Administrador(a): conclui as próprias tarefas pelo site</label>' +
       '<div style="display:flex;gap:8px"><button class="btn btn-dark" type="submit"' + (S.busy.person ? ' disabled' : '') + '>' + (ed ? 'Salvar alterações' : 'Adicionar') + '</button>' +
       (ed ? '<button class="btn btn-ghost" type="button" data-act="cancel-edit-person">Cancelar</button>' : '') + '</div>' +
     '</form>' +
@@ -787,7 +790,7 @@ function personCard(p) {
   var open = sortTasks(mine.filter(function (t) { return t.status !== 'concluida'; }));
   return '<article class="pcard">' +
     '<div class="ph"><span class="av lg" style="--c:' + avColor(p.id) + '">' + initials(p.nome) + '</span>' +
-      '<div style="min-width:0"><div class="pn">' + esc(p.nome) + '</div><div class="pe">' + esc(p.email) + '</div>' + (p.cargo ? '<div class="pc">' + esc(p.cargo) + '</div>' : '') + '</div></div>' +
+      '<div style="min-width:0"><div class="pn">' + esc(p.nome) + (isAdmin(p) ? ' <span class="adm">adm</span>' : '') + '</div><div class="pe">' + esc(p.email) + '</div>' + (p.cargo ? '<div class="pc">' + esc(p.cargo) + '</div>' : '') + '</div></div>' +
     '<div class="load">' + Object.keys(c).map(function (k) { return c[k] ? '<i style="width:' + (c[k] / total * 100) + '%;background:' + colors[k] + '"></i>' : ''; }).join('') + '</div>' +
     '<div class="load-legend">' + Object.keys(c).map(function (k) { return '<span style="--c:' + colors[k] + '">' + c[k] + ' ' + STATUS_LABEL[k].toLowerCase() + '</span>'; }).join('') + '</div>' +
     '<div class="ptasks">' + (open.length ? open.map(function (t) {
@@ -872,7 +875,14 @@ function renderDrawer() {
   var delivered = {};
   t.entregas.forEach(function (e) { if (e.pessoaId) delivered[e.pessoaId] = 1; });
 
+  var adminIds = t.responsaveis.filter(function (id) { return isAdmin(person(id)); });
+  var othersIds = t.responsaveis.filter(function (id) { return adminIds.indexOf(id) < 0 && person(id); });
+  var adminTask = adminIds.length > 0 && t.status !== 'concluida' && t.status !== 'verificar';
+
   var actions = '';
+  if (adminTask) {
+    actions += '<button class="btn btn-ok" data-act="admin-done" title="Tarefa da administração: conclua aqui mesmo, sem responder o e-mail">✓ Concluir</button>';
+  }
   if (t.status === 'verificar') {
     actions += '<button class="btn btn-ok" data-act="approve">✓ Aprovar e concluir</button>' +
       '<button class="btn btn-ghost" data-act="toggle-return">Devolver com ajustes</button>';
@@ -886,8 +896,8 @@ function renderDrawer() {
   actions += '<button class="btn btn-ghost" data-act="edit-task">Editar</button>' +
     '<button class="btn btn-danger" data-act="del-task" style="margin-left:auto">Excluir</button>';
 
-  var approveOpts = t.status === 'verificar'
-    ? '<div style="width:100%"><label class="check"><input type="checkbox" id="notify-done"' + (S.notifyDone ? ' checked' : '') + '> Ao concluir, avisar os responsáveis por e-mail</label></div>' : '';
+  var approveOpts = t.status === 'verificar' || (adminTask && othersIds.length)
+    ? '<div style="width:100%"><label class="check"><input type="checkbox" id="notify-done"' + (S.notifyDone ? ' checked' : '') + '> Ao concluir, avisar ' + (t.status === 'verificar' ? 'os responsáveis' : 'os outros responsáveis') + ' por e-mail</label></div>' : '';
   var returnBox = S.returning && t.status === 'verificar'
     ? '<div class="return-box" style="width:100%"><label class="l" for="return-note" style="margin:0">O que precisa ser ajustado?</label>' +
       '<textarea class="field w" id="return-note" rows="3" placeholder="Ex.: aumentar o contraste do título e enviar em PNG também."></textarea>' +
@@ -898,7 +908,9 @@ function renderDrawer() {
     var st = delivered[id] ? '<span class="tag sent">entregou</span>'
       : t.confirmados.indexOf(id) >= 0 ? '<span class="tag ok">trabalhando</span>'
       : '<span class="tag wait">aguardando</span>';
-    return '<div class="person-row"><span class="av md" style="--c:' + avColor(id) + '">' + initials(pp.nome) + '</span><div class="nm"><b>' + esc(pp.nome) + '</b><div>' + esc(pp.email) + '</div></div>' + st + '</div>';
+    var startBtn = isAdmin(pp) && t.confirmados.indexOf(id) < 0 && (t.status === 'a_fazer' || t.status === 'em_andamento')
+      ? '<button class="btn btn-ghost btn-sm" data-act="admin-start" data-id="' + id + '" title="Marca ' + esc(firstName(pp.nome)) + ' como trabalhando">Comecei</button>' : '';
+    return '<div class="person-row"><span class="av md" style="--c:' + avColor(id) + '">' + initials(pp.nome) + '</span><div class="nm"><b>' + esc(pp.nome) + '</b>' + (isAdmin(pp) ? ' <span class="adm">adm</span>' : '') + '<div>' + esc(pp.email) + '</div></div>' + startBtn + st + '</div>';
   }).join('') : '<div class="muted">Sem responsáveis. <button class="lnk" data-act="edit-task" style="text-decoration:underline">Adicionar</button></div>';
 
   var subs = t.entregas.length ? t.entregas.slice().reverse().map(function (e) {
@@ -928,7 +940,8 @@ function renderDrawer() {
       '<div class="howto">' + (expects
         ? 'Os responsáveis entregam <b>respondendo o e-mail da tarefa para ' + HUB + '</b> com um anexo em <b>' + esc(expectedLabel(t)) + '</b>, mantendo <b>' + esc(tag) + '</b> no assunto. A tarefa vai sozinha para <b>Verificar</b>.'
         : 'Não há arquivo esperado: os responsáveis respondem o e-mail com <b>ENTREGUE</b> e a tarefa vai para <b>Verificar</b>.') +
-        ' Responder <b>COMEÇAR</b> marca a pessoa como trabalhando.</div></div>' +
+        ' Responder <b>COMEÇAR</b> marca a pessoa como trabalhando.' +
+        (adminIds.length ? ' Administradores podem usar <b>Comecei</b> e <b>✓ Concluir</b> aqui mesmo, sem responder o e-mail.' : '') + '</div></div>' +
       '<div class="sec"><h5><span>Responsáveis</span><span>' + t.confirmados.length + '/' + t.responsaveis.length + ' confirmaram</span></h5>' + people + '</div>' +
       '<div class="sec"><h5><span>Entregas</span><span>' + t.entregas.length + '</span></h5>' + subs + '</div>' +
       '<div class="sec" style="border-bottom:0"><h5>Histórico</h5>' + hist + '</div>' +
@@ -1065,6 +1078,11 @@ document.addEventListener('click', function (e) {
     case 'approve':
       var n = $('#notify-done'); S.notifyDone = n ? n.checked : true;
       act('status', function () { return api('apiSetStatus', S.open, 'concluida', { notificar: S.notifyDone }); }); break;
+    case 'admin-done':
+      var nd = $('#notify-done'); if (nd) S.notifyDone = nd.checked;
+      act('status', function () { return api('apiSetStatus', S.open, 'concluida', { notificar: !!(nd && nd.checked), peloPainel: true }); }); break;
+    case 'admin-start':
+      act('status', function () { return api('apiStart', S.open, id); }); break;
     case 'toggle-return': S.returning = !S.returning; renderDrawer(); if (S.returning) setTimeout(function () { var r = $('#return-note'); if (r) r.focus(); }, 30); break;
     case 'do-return':
       var note = ($('#return-note') || {}).value || '';
@@ -1104,7 +1122,7 @@ document.addEventListener('click', function (e) {
 document.addEventListener('submit', function (e) {
   if (e.target.id !== 'person-form') return;
   e.preventDefault();
-  var p = { nome: $('#p-nome').value, email: $('#p-email').value, cargo: $('#p-cargo').value };
+  var p = { nome: $('#p-nome').value, email: $('#p-email').value, cargo: $('#p-cargo').value, admin: $('#p-admin').checked };
   if (S.editPerson) p.id = S.editPerson;
   act('person', function () { return api('apiSavePeople', [p]); }).then(function (r) { if (r) { S.editPerson = null; renderMain(); } });
 });
@@ -1247,12 +1265,12 @@ var Demo = (function () {
 
   function seed() {
     var P = [
-      ['ana', 'Ana Beatriz Souza', 'ana.souza@exemplo.com', 'Comunicação'],
+      ['ana', 'Ana Beatriz Souza', 'ana.souza@exemplo.com', 'Comunicação', 'sim'],
       ['bruno', 'Bruno Tanaka', 'bruno.tanaka@exemplo.com', 'Finanças'],
       ['carla', 'Carla Mendes', 'carla.mendes@exemplo.com', 'Eventos'],
       ['diego', 'Diego Rocha', 'diego.rocha@exemplo.com', 'Design'],
       ['duda', 'Eduarda Lima', 'eduarda.lima@exemplo.com', 'Propostas']
-    ].map(function (p) { return { id: p[0], nome: p[1], email: p[2], cargo: p[3], criadoEm: dAgo(200) }; });
+    ].map(function (p) { return { id: p[0], nome: p[1], email: p[2], cargo: p[3], admin: p[4] || '', criadoEm: dAgo(200) }; });
     function T(n, titulo, desc, prioridade, status, resp, prazo, kinds, conf, extra) {
       return Object.assign({
         id: 't' + n, codigo: 'T-' + ('00' + n).slice(-3), titulo: titulo, descricao: desc, prioridade: prioridade, status: status,
@@ -1308,9 +1326,12 @@ var Demo = (function () {
         if (!nome || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { ign++; return; }
         if (p.id) {
           if (db.pessoas.some(function (x) { return x.id !== p.id && x.email === email; })) throw new Error('O e-mail ' + email + ' já está cadastrado.');
-          Object.assign(db.pessoas.find(function (x) { return x.id === p.id; }), { nome: nome, email: email, cargo: p.cargo || '' }); upd++;
+          var ex = db.pessoas.find(function (x) { return x.id === p.id; });
+          Object.assign(ex, { nome: nome, email: email, cargo: p.cargo || '' });
+          if ('admin' in p) ex.admin = p.admin ? 'sim' : '';
+          upd++;
         } else if (db.pessoas.some(function (x) { return x.email === email; })) ign++;
-        else { db.pessoas.push({ id: uid(), nome: nome, email: email, cargo: p.cargo || '', criadoEm: now() }); add++; }
+        else { db.pessoas.push({ id: uid(), nome: nome, email: email, cargo: p.cargo || '', admin: p.admin ? 'sim' : '', criadoEm: now() }); add++; }
       });
       var parts = [];
       if (add) parts.push(add + (add > 1 ? ' pessoas adicionadas' : ' pessoa adicionada'));
@@ -1349,13 +1370,22 @@ var Demo = (function () {
       t.status = status; t.atualizadoEm = now(); t.concluidoEm = status === 'concluida' ? now() : '';
       var aviso = t.codigo + ' → ' + STATUS_LABEL[status] + '.';
       if (status === 'concluida') {
-        ev(t.id, 'concluida', t.codigo + ' aprovada e concluída.');
-        if (opts.notificar && t.responsaveis.length) { mail(t.responsaveis); aviso += ' Responsáveis avisados.'; }
+        ev(t.id, 'concluida', t.codigo + (opts.peloPainel ? ' concluída pela administração no painel.' : ' aprovada e concluída.'));
+        var alvo = t.responsaveis.filter(function (pid) { var pp = db.pessoas.find(function (x) { return x.id === pid; }); return !opts.peloPainel || !(pp && pp.admin === 'sim'); });
+        if (opts.notificar && alvo.length) { mail(alvo); aviso += ' Responsáveis avisados.'; }
       } else if (before === 'verificar' && opts.nota) {
         ev(t.id, 'devolvida', t.codigo + ' devolvida com ajustes: “' + opts.nota + '”');
         mail(t.responsaveis); aviso += ' Pedido de ajustes enviado.';
       } else ev(t.id, 'status', t.codigo + ': ' + STATUS_LABEL[before] + ' → ' + STATUS_LABEL[status] + '.');
       return boot(aviso);
+    },
+    apiStart: function (id, pid) {
+      var t = T(id), pp = db.pessoas.find(function (x) { return x.id === pid; });
+      if (t.confirmados.indexOf(pid) < 0) t.confirmados.push(pid);
+      if (t.status === 'a_fazer') t.status = 'em_andamento';
+      t.atualizadoEm = now();
+      ev(t.id, 'inicio', pp.nome + ' começou a trabalhar em ' + t.codigo + ' (marcado no painel).');
+      return boot(firstName(pp.nome) + ' está trabalhando em ' + t.codigo + '.');
     },
     apiResend: function (id) { var t = T(id); var n = mail(t.responsaveis); ev(t.id, 'lembrete', 'Lembrete de ' + t.codigo + ' enviado para ' + n.join(', ') + '.'); return boot('Lembrete enviado para ' + n.join(', ') + '.'); },
     apiSendMessage: function (m) {

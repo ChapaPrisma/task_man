@@ -12,6 +12,7 @@ Painel de tarefas da **Chapa Prisma (Grêmio Politécnico)**. Tudo gira em torno
 - quem **responde o e-mail para chapa.poli.prisma@gmail.com com o arquivo** faz a tarefa ir sozinha para **Verificar**: o anexo é salvo no Drive e a pessoa recebe uma confirmação;
 - você confere e clica em **Aprovar e concluir**, ou **Devolver com ajustes** (vai um e-mail com o que mudar);
 - também dá para mandar **mensagens avulsas** para uma pessoa só (ou várias).
+- pessoas marcadas como **administrador(a)** podem marcar **Comecei** e **✓ Concluir** nas próprias tarefas direto no painel, sem responder o e-mail.
 
 | Prioridade | Cor | Quando usar |
 |---|---|---|
