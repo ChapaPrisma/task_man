@@ -88,6 +88,22 @@ function setup() {
   }
 }
 
+/**
+ * Diagnóstico — rode pelo editor (▶ Executar › testarEmail).
+ * Envia um e-mail de teste para a última pessoa cadastrada (ou para a própria conta)
+ * e mostra no registro a cota restante ou o erro exato do Google.
+ */
+function testarEmail() {
+  const people = readTable_('pessoas');
+  const to = people.length ? people[people.length - 1].email : Session.getEffectiveUser().getEmail();
+  Logger.log('Conta que envia: ' + Session.getEffectiveUser().getEmail());
+  Logger.log('Cota de e-mails restante hoje: ' + MailApp.getRemainingDailyQuota());
+  GmailApp.sendEmail(to, '[' + CONFIG.SUBJECT_TAG + '] Teste de envio',
+    'Se você recebeu este e-mail, o painel da Chapa Prisma consegue enviar tarefas.',
+    { name: CONFIG.SENDER_NAME, replyTo: CONFIG.HUB_EMAIL });
+  Logger.log('OK: e-mail de teste enviado para ' + to + '. Confira também a pasta Spam.');
+}
+
 /* =========================================================================
  * API chamada pelo painel (google.script.run)
  * ========================================================================= */
@@ -285,7 +301,7 @@ function apiSendMessage(msg) {
         GmailApp.sendEmail(p.email, '[' + CONFIG.SUBJECT_TAG + '] ' + assunto, text,
           { htmlBody: html, name: CONFIG.SENDER_NAME, replyTo: CONFIG.HUB_EMAIL });
         ok.push(p.nome);
-      } catch (e) { erros.push(p.nome); }
+      } catch (e) { erros.push(p.nome + ' (' + errMsg_(e) + ')'); }
     });
     appendRows_('mensagens', [{ id: newId_(), para: para, assunto: assunto, corpo: corpo, enviadoEm: nowIso_() }]);
     appendRows_('eventos', [evt_('', 'mensagem', 'Mensagem “' + assunto + '” enviada para ' + ok.join(', ') + '.')]);
@@ -447,7 +463,8 @@ function sendTaskEmails_(task, personIds, people, kind, nota) {
         { htmlBody: mail.html, name: CONFIG.SENDER_NAME, replyTo: CONFIG.HUB_EMAIL });
       ok.push(p.nome);
     } catch (e) {
-      erros.push(p.nome);
+      Logger.log('Falha ao enviar para ' + p.email + ': ' + errMsg_(e));
+      erros.push(p.nome + ' (' + errMsg_(e) + ')');
     }
   });
   return { ok: ok, erros: erros };
@@ -790,6 +807,7 @@ function fmtDatePt_(ymd) {
   return dias[d.getDay()] + ', ' + ('0' + p[2]).slice(-2) + '/' + ('0' + p[1]).slice(-2) + '/' + p[0];
 }
 
+function errMsg_(e) { return String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 180); }
 function newId_() { return Utilities.getUuid().replace(/-/g, '').slice(0, 10); }
 function nowIso_() { return new Date().toISOString(); }
 function clean_(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
